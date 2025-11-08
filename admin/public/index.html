@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>打印代理管理后台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            color: #333;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .stat-card .value.connected {
+            color: #10b981;
+        }
+
+        .stat-card .value.disconnected {
+            color: #ef4444;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #10b981;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .shop-list {
+            list-style: none;
+        }
+
+        .shop-item {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: box-shadow 0.3s;
+        }
+
+        .shop-item:hover {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .shop-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .shop-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .shop-id {
+            font-size: 12px;
+            color: #666;
+            background: #f3f4f6;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-badge.connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-badge.disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .printers-list {
+            margin-top: 15px;
+        }
+
+        .printer-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .printer-info {
+            flex: 1;
+        }
+
+        .printer-ip {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .printer-name {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .printer-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            font-size: 24px;
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .deploy-command {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 15px 0;
+            word-break: break-all;
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #374151;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .copy-btn:hover {
+            background: #4b5563;
+        }
+
+        .copy-btn.copied {
+            background: #10b981;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 2000;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            
+            <div style="margin-top: 15px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+                <strong>🖥️ RestDesk 远程运维信息</strong>
+                <p style="margin: 8px 0 0 0; font-size: 14px; color: #666;">
+                    在分店电脑上安装 RestDesk 后，填写以下配置即可连接：
+                </p>
+                <div style="margin-top: 10px; background: #1f2937; color: #f8fafc; padding: 12px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 13px; word-break: break-all; position: relative;">
+                    <button class="copy-btn" onclick="copyRestDeskInfo(event)" style="position: absolute; top: 10px; right: 10px; background: #4c1d95; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; z-index: 10;">复制</button>
+                    <div id="restDeskInfo" style="padding-right: 80px; line-height: 1.6;">
+ID服务器: 90.195.120.165:21116
+中继服务器: 90.195.120.165:21117
+密钥: VhrFMc1CL7jkcVmcwxdXI6KSkmRa6fuDtWKKM60vc1Q=
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>总分店数</h3>
+                <div class="value" id="totalShops">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>已连接</h3>
+                <div class="value connected" id="connectedShops">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>未连接</h3>
+                <div class="value disconnected" id="disconnectedShops">0</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>
+                    分店列表
+                    <button class="btn btn-success" onclick="showAddShopModal()">+ 添加分店</button>
+                </h2>
+                <ul class="shop-list" id="shopList">
+                    <li>加载中...</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>已连接代理</h2>
+                <div id="agentsList">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑分店模态框 -->
+    <div class="modal" id="shopModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">添加分店</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="shopForm">
+                <div class="form-group">
+                    <label>分店ID *</label>
+                    <input type="text" id="shopId" required placeholder="例如: shop1, bbq">
+                </div>
+                <div class="form-group">
+                    <label>分店名称</label>
+                    <input type="text" id="shopName" placeholder="例如: 测试分店">
+                </div>
+                <div style="text-align: right; margin-top: 20px;">
+                    <button type="button" class="btn" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-success">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加打印机模态框 -->
+    <div class="modal" id="printerModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>添加打印机</h3>
+                <button class="close-btn" onclick="closePrinterModal()">&times;</button>
+            </div>
+            <form id="printerForm">
+                <div class="form-group">
+                    <label>IP 地址 *</label>
+                    <input type="text" id="printerIp" required placeholder="例如: 192.168.0.31">
+                </div>
+                <div class="form-group">
+                    <label>端口</label>
+                    <input type="number" id="printerPort" value="9100" placeholder="9100">
+                </div>
+                <div class="form-group">
+                    <label>打印机名称</label>
+                    <input type="text" id="printerName" placeholder="例如: 厨房打印机1">
+                </div>
+                <div class="form-group">
+                    <label>类型</label>
+                    <select id="printerType">
+                        <option value="kitchen">厨房</option>
+                        <option value="front">前台</option>
+                        <option value="other">其他</option>
+                    </select>
+                </div>
+                <div style="text-align: right; margin-top: 20px;">
+                    <button type="button" class="btn" onclick="closePrinterModal()">取消</button>
+                    <button type="submit" class="btn btn-success">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 部署脚本模态框 -->
+    <div class="modal" id="deployModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>一键部署脚本</h3>
+                <button class="close-btn" onclick="closeDeployModal()">&times;</button>
+            </div>
+            <div>
+                <p style="margin-bottom: 15px; color: #666;">在 Windows WSL 中运行以下命令：</p>
+                <div class="deploy-command">
+                    <button class="copy-btn" onclick="copyDeployCommand(event)">复制</button>
+                    <div id="deployCommand" style="padding-right: 80px;">加载中...</div>
+                </div>
+                <p style="margin-top: 15px; color: #666; font-size: 14px;">
+                    💡 提示：在 WSL 终端中粘贴并运行上述命令即可完成部署
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentShopId = null;
+        let shops = [];
+
+        // 加载数据
+        async function loadData() {
+            try {
+                const [shopsRes, agentsRes] = await Promise.all([
+                    fetch('/api/shops'),
+                    fetch('/api/agents')
+                ]);
+
+                const shopsData = await shopsRes.json();
+                const agentsData = await agentsRes.json();
+
+                shops = shopsData.shops || [];
+                updateStats(shopsData);
+                renderShops(shops);
+                renderAgents(agentsData.agents || []);
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                showToast('加载数据失败: ' + error.message, 'error');
+            }
+        }
+
+        function updateStats(data) {
+            document.getElementById('totalShops').textContent = data.total || 0;
+            document.getElementById('connectedShops').textContent = data.connected || 0;
+            document.getElementById('disconnectedShops').textContent = (data.total || 0) - (data.connected || 0);
+        }
+
+        function renderShops(shops) {
+            const list = document.getElementById('shopList');
+            if (shops.length === 0) {
+                list.innerHTML = '<li style="text-align: center; color: #666; padding: 20px;">暂无分店，点击"添加分店"开始</li>';
+                return;
+            }
+
+            list.innerHTML = shops.map(shop => `
+                <li class="shop-item">
+                    <div class="shop-header">
+                        <div>
+                            <div class="shop-name">${shop.name || shop.shopId}</div>
+                            <div class="shop-id">${shop.shopId}</div>
+                        </div>
+                        <span class="status-badge ${shop.connected ? 'connected' : 'disconnected'}">
+                            ${shop.connected ? '✓ 已连接' : '✗ 未连接'}
+                        </span>
+                    </div>
+                    <div class="printers-list">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <strong>打印机列表 (${shop.printers.length})</strong>
+                            <div>
+                                <button class="btn btn-small" onclick="showAddPrinterModal('${shop.shopId}')">+ 添加</button>
+                                <button class="btn btn-small" onclick="showDeployModal('${shop.shopId}')">部署</button>
+                            </div>
+                        </div>
+                        ${shop.printers.map(printer => `
+                            <div class="printer-item">
+                                <div class="printer-info">
+                                    <div class="printer-ip">${printer.ip}:${printer.port}</div>
+                                    <div class="printer-name">${printer.name} (${printer.type})</div>
+                                </div>
+                                <div class="printer-actions">
+                                    <button class="btn btn-small" onclick="testPrinter('${shop.shopId}', '${printer.ip}', ${printer.port})">测试</button>
+                                    <button class="btn btn-small btn-danger" onclick="deletePrinter('${shop.shopId}', '${printer.ip}')">删除</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${shop.printers.length === 0 ? '<div style="text-align: center; color: #999; padding: 10px;">暂无打印机</div>' : ''}
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        function renderAgents(agents) {
+            const list = document.getElementById('agentsList');
+            if (agents.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无已连接的代理</div>';
+                return;
+            }
+
+            list.innerHTML = agents.map(agent => `
+                <div style="padding: 15px; background: #f9fafb; border-radius: 8px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${agent.shopId}</strong>
+                            <span class="status-badge ${agent.connected ? 'connected' : 'disconnected'}" style="margin-left: 10px;">
+                                ${agent.connected ? '已连接' : '未连接'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 添加分店
+        function showAddShopModal() {
+            document.getElementById('modalTitle').textContent = '添加分店';
+            document.getElementById('shopForm').reset();
+            document.getElementById('shopId').disabled = false;
+            currentShopId = null;
+            document.getElementById('shopModal').classList.add('active');
+        }
+
+        document.getElementById('shopForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const shopId = document.getElementById('shopId').value;
+            const shopName = document.getElementById('shopName').value;
+
+            try {
+                const url = currentShopId ? `/api/shops/${currentShopId}` : '/api/shops';
+                const method = currentShopId ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shopId, name: shopName })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('保存成功');
+                    closeModal();
+                    loadData();
+                } else {
+                    showToast('保存失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('保存失败: ' + error.message, 'error');
+            }
+        });
+
+        // 添加打印机
+        function showAddPrinterModal(shopId) {
+            currentShopId = shopId;
+            document.getElementById('printerForm').reset();
+            document.getElementById('printerPort').value = '9100';
+            document.getElementById('printerModal').classList.add('active');
+        }
+
+        document.getElementById('printerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const ip = document.getElementById('printerIp').value;
+            const port = parseInt(document.getElementById('printerPort').value);
+            const name = document.getElementById('printerName').value;
+            const type = document.getElementById('printerType').value;
+
+            try {
+                const response = await fetch(`/api/shops/${currentShopId}/printers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip, port, name, type })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('打印机添加成功');
+                    closePrinterModal();
+                    loadData();
+                } else {
+                    showToast('添加失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('添加失败: ' + error.message, 'error');
+            }
+        });
+
+        // 删除打印机
+        async function deletePrinter(shopId, ip) {
+            if (!confirm(`确定要删除打印机 ${ip} 吗？`)) return;
+
+            try {
+                const response = await fetch(`/api/shops/${shopId}/printers/${ip}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('删除成功');
+                    loadData();
+                } else {
+                    showToast('删除失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('删除失败: ' + error.message, 'error');
+            }
+        }
+
+        // 测试打印机
+        async function testPrinter(shopId, ip, port) {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> 测试中...';
+
+            try {
+                const response = await fetch(`/api/shops/${shopId}/printers/${ip}/test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ port })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('测试打印已发送，请检查打印机');
+                } else {
+                    showToast('测试失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('测试失败: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // 显示部署脚本
+        async function showDeployModal(shopId) {
+            document.getElementById('deployModal').classList.add('active');
+            const commandEl = document.getElementById('deployCommand');
+            commandEl.textContent = '加载中...';
+
+            try {
+                const response = await fetch(`/api/shops/${shopId}/deploy`);
+                const data = await response.json();
+                if (data.success) {
+                    // 显示 curl 命令
+                    commandEl.textContent = data.curlCommand;
+                    // 保存完整命令用于复制
+                    commandEl.dataset.command = data.curlCommand;
+                } else {
+                    commandEl.textContent = '加载失败: ' + data.error;
+                }
+            } catch (error) {
+                commandEl.textContent = '加载失败: ' + error.message;
+            }
+        }
+
+        function copyDeployCommand(event) {
+            const commandEl = document.getElementById('deployCommand');
+            const command = commandEl.dataset.command || commandEl.textContent.trim();
+            
+            // 如果命令还在加载中，不执行复制
+            if (command === '加载中...' || !command) {
+                showToast('命令尚未加载完成', 'error');
+                return;
+            }
+            
+            // 使用 Clipboard API 或 fallback 方法
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(command).then(() => {
+                    const btn = event ? event.target : document.querySelector('#deployModal .copy-btn');
+                    if (btn) {
+                        const originalText = btn.textContent;
+                        btn.textContent = '已复制!';
+                        btn.classList.add('copied');
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.classList.remove('copied');
+                        }, 2000);
+                    }
+                    showToast('命令已复制到剪贴板');
+                }).catch(err => {
+                    console.error('复制失败:', err);
+                    // Fallback: 使用 select 方法
+                    fallbackCopy(command);
+                });
+            } else {
+                // Fallback: 使用 select 方法
+                fallbackCopy(command);
+            }
+        }
+        
+        // Fallback 复制方法
+        function fallbackCopy(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showToast('命令已复制到剪贴板');
+                } else {
+                    showToast('复制失败，请手动选择文本复制', 'error');
+                }
+            } catch (err) {
+                console.error('复制失败:', err);
+                showToast('复制失败，请手动选择文本复制', 'error');
+            } finally {
+                document.body.removeChild(textArea);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('shopModal').classList.remove('active');
+        }
+
+        function closePrinterModal() {
+            document.getElementById('printerModal').classList.remove('active');
+        }
+
+        function closeDeployModal() {
+            document.getElementById('deployModal').classList.remove('active');
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.style.background = type === 'error' ? '#ef4444' : '#10b981';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        function copyTextToClipboard({ event, text, onSuccess }) {
+            const doCopy = (content) => {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(content).then(onSuccess).catch(() => fallbackCopy(content, onSuccess))
+                } else {
+                    fallbackCopy(content, onSuccess)
+                }
+            }
+
+            doCopy(text)
+
+            if (event) {
+                event.preventDefault()
+            }
+        }
+
+        function copyWSLFixCommand(event) {
+            const commandEl = document.getElementById('wslFixCommand');
+            const command = commandEl ? commandEl.textContent.trim() : 'curl -s https://pa.easyify.uk/fix-wsl-network.sh | bash';
+            const onSuccess = () => {
+                const btn = event ? event.target : document.querySelector('#wslFixCommand').parentElement.querySelector('.copy-btn');
+                if (btn) {
+                    const originalText = btn.textContent;
+                    btn.textContent = '已复制!';
+                    btn.style.background = '#10b981';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.background = '#374151';
+                    }, 2000);
+                }
+                showToast('命令已复制到剪贴板');
+            }
+
+            copyTextToClipboard({ event, text: command, onSuccess })
+        }
+
+        function copyRestDeskInfo(event) {
+            const info = document.getElementById('restDeskInfo');
+            const text = info ? info.textContent.trim() : '';
+            const onSuccess = () => {
+                const btn = event ? event.target : document.querySelector('#restDeskInfo').parentElement.querySelector('.copy-btn');
+                if (btn) {
+                    const originalText = btn.textContent;
+                    btn.textContent = '已复制!';
+                    btn.style.background = '#4c1d95';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.background = '#4c1d95';
+                    }, 2000);
+                }
+                showToast('RestDesk 信息已复制');
+            }
+
+            copyTextToClipboard({ event, text, onSuccess })
+        }
+
+        // 定期刷新数据
+        loadData();
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>
+

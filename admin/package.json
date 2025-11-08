@@ -1,0 +1,29 @@
+{
+  "name": "print-agent-admin",
+  "version": "1.0.0",
+  "description": "打印代理管理后台",
+  "main": "admin-server.js",
+  "scripts": {
+    "start": "node admin-server.js",
+    "dev": "NODE_ENV=development node admin-server.js",
+    "pm2": "pm2 start admin-server.js --name print-agent-admin",
+    "pm2:stop": "pm2 stop print-agent-admin",
+    "pm2:restart": "pm2 restart print-agent-admin",
+    "pm2:logs": "pm2 logs print-agent-admin"
+  },
+  "keywords": [
+    "print",
+    "agent",
+    "admin",
+    "management"
+  ],
+  "author": "Kevin",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0"
+  }
+}
+
+
+

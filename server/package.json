@@ -1,0 +1,31 @@
+{
+  "name": "print-agent-server",
+  "version": "2.0.0",
+  "description": "打印代理服务器 - 本地代理模式（无VPN）",
+  "main": "print-server.js",
+  "scripts": {
+    "start": "node print-server.js",
+    "dev": "NODE_ENV=development node print-server.js",
+    "pm2": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop print-agent-server",
+    "pm2:restart": "pm2 restart print-agent-server",
+    "pm2:logs": "pm2 logs print-agent-server",
+    "pm2:delete": "pm2 delete print-agent-server"
+  },
+  "keywords": [
+    "print",
+    "proxy",
+    "websocket",
+    "local-agent",
+    "escpos",
+    "gbk"
+  ],
+  "author": "Kevin",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "iconv-lite": "0.7.0",
+    "ws": "8.18.3"
+  }
+}
+

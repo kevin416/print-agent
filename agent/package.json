@@ -1,0 +1,25 @@
+{
+  "name": "print-agent-client",
+  "version": "2.0.0",
+  "description": "本地打印代理客户端 - 运行在分店电脑上",
+  "main": "local-print-agent.js",
+  "scripts": {
+    "start": "node local-print-agent.js",
+    "dev": "node local-print-agent.js"
+  },
+  "keywords": [
+    "print",
+    "agent",
+    "websocket",
+    "local",
+    "escpos",
+    "gbk"
+  ],
+  "author": "Kevin",
+  "license": "MIT",
+  "dependencies": {
+    "iconv-lite": "0.7.0",
+    "ws": "8.18.3"
+  }
+}
+

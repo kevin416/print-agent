@@ -1,0 +1,10 @@
+{
+  "shopId": "shop1",
+  "serverUrl": "ws://printer1.easyify.uk/print-agent",
+  "reconnectInterval": 5000,
+  "heartbeatInterval": 30000,
+  "logLevel": "info",
+  "enableStatusServer": true,
+  "rejectUnauthorized": false
+}
+
