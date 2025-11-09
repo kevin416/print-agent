@@ -201,39 +201,46 @@ echo "- 服务器地址: http://127.0.0.1:3000"
 echo "- 健康检查: http://127.0.0.1:3000/api/print/health"
 echo "- 已连接代理: http://127.0.0.1:3000/api/print/agents"
 echo ""
-echo "📝 配置 Nginx..."
-ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
+if [ -n "${SUDO_PASS:-}" ]; then
+  echo "📝 配置 Nginx..."
+  ssh $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS'" <<'ENDSSH'
 set -e
+
+sudo_run() {
+  if [ -n "$SUDO_PASS" ]; then
+    printf '%s\n' "$SUDO_PASS" | sudo -S "$@"
+  else
+    sudo "$@"
+  fi
+}
 
 cd ~/print-agent/server
 
-# 备份现有配置
 if [ -f /etc/nginx/sites-available/print-agent ]; then
     echo "📋 备份现有配置..."
-    sudo cp /etc/nginx/sites-available/print-agent /etc/nginx/sites-available/print-agent.backup.$(date +%Y%m%d_%H%M%S)
+    sudo_run cp /etc/nginx/sites-available/print-agent /etc/nginx/sites-available/print-agent.backup.$(date +%Y%m%d_%H%M%S)
 fi
 
-# 复制新配置
 echo "📋 复制 Nginx 配置..."
-sudo cp nginx.conf /etc/nginx/sites-available/print-agent
+sudo_run cp nginx.conf /etc/nginx/sites-available/print-agent
 
-# 创建符号链接
 echo "📋 创建符号链接..."
-sudo ln -sf /etc/nginx/sites-available/print-agent /etc/nginx/sites-enabled/print-agent
+sudo_run ln -sf /etc/nginx/sites-available/print-agent /etc/nginx/sites-enabled/print-agent
 
-# 测试配置
 echo "📋 测试 Nginx 配置..."
-if sudo nginx -t; then
+if sudo_run nginx -t; then
     echo "✅ Nginx 配置测试通过"
-    # 重载 Nginx
     echo "📋 重载 Nginx..."
-    sudo systemctl reload nginx
+    sudo_run systemctl reload nginx
     echo "✅ Nginx 已重载"
 else
     echo "❌ Nginx 配置测试失败"
     echo "⚠️  请手动检查配置"
 fi
 ENDSSH
+else
+  echo "⚠️ 未提供 SUDO_PASS，跳过 Nginx 配置步骤"
+fi
 
 echo ""
 echo "✅ Nginx 配置完成！"

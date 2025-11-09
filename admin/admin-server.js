@@ -1,468 +1,291 @@
 #!/usr/bin/env node
-/**
- * 打印代理管理后台服务器
- * 运行在 https://pa.easyify.uk/
- * 
- * 功能：
- * - 管理分店和打印机
- * - 打印机连接测试
- * - 生成一键部署脚本
- * - 显示已连接的本地代理
- */
 
-const express = require('express')
 const path = require('path')
-const http = require('http')
+const express = require('express')
 const axios = require('axios')
+const fs = require('fs-extra')
+const cors = require('cors')
 
 const app = express()
-const PORT = process.env.PORT || 3004
-const PRINT_SERVER_URL = process.env.PRINT_SERVER_URL || 'http://127.0.0.1:3000'
 
-// ============================================
-// 中间件配置
-// ============================================
+const PORT = Number(process.env.PORT || process.env.ADMIN_PORT || 3004)
+const PRINT_SERVER_URL =
+  (process.env.PRINT_AGENT_SERVER || process.env.PRINT_SERVER_URL || 'http://127.0.0.1:3000').replace(/\/$/, '')
+const derivedWsUrl =
+  (PRINT_SERVER_URL.startsWith('https://')
+    ? PRINT_SERVER_URL.replace('https://', 'wss://')
+    : PRINT_SERVER_URL.replace('http://', 'ws://')) + '/print-agent'
 
-app.use(express.json())
+const DEFAULT_WS_URL =
+  process.env.PRINT_AGENT_WS_URL ||
+  (/(127\.0\.0\.1|localhost)/.test(derivedWsUrl) ? 'wss://printer-hub.easyify.uk/print-agent' : derivedWsUrl)
+const PUBLIC_BASE_URL = process.env.ADMIN_PUBLIC_BASE_URL || null
+
+console.log('[admin] 默认 WebSocket 地址:', DEFAULT_WS_URL)
+
+const DATA_DIR = path.join(__dirname, 'data')
+const DATA_FILE = path.join(DATA_DIR, 'shops.json')
+
+function loadLocalAgentSource() {
+  const candidates = [
+    path.join(__dirname, '..', 'agent', 'local-print-agent.js'),
+    path.join(__dirname, 'assets', 'local-print-agent.js'),
+    path.join(__dirname, 'local-print-agent.js')
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return fs.readFileSync(candidate, 'utf-8')
+    }
+  }
+
+  console.warn('[admin] local-print-agent.js not found, using placeholder script')
+  return `#!/usr/bin/env node
+console.error('local-print-agent.js 缺失，请联系管理员更新部署脚本。')
+process.exit(1)
+`
+}
+
+const LOCAL_AGENT_SOURCE = loadLocalAgentSource()
+  .replace(/\\/g, '\\\\')
+  .replace(/`/g, '\\`')
+  .replace(/\$\{/g, '\\${')
+
+// Middleware
+app.use(cors())
+app.use(express.json({ limit: '2mb' }))
+app.use(express.urlencoded({ extended: false }))
 app.use(express.static(path.join(__dirname, 'public')))
 
-// CORS
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*')
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200)
-    return
-  }
-  next()
-})
-
-// ============================================
-// 数据存储（文件持久化存储）
-// ============================================
-
-const fs = require('fs')
-const DATA_FILE = path.join(__dirname, 'data', 'shops.json')
-const DATA_DIR = path.dirname(DATA_FILE)
-
-// 确保数据目录存在
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true })
-}
-
-// 分店配置：shopId -> { shopId, name, printers: [{ ip, port, name, type }] }
-let shops = new Map()
-
-// 加载数据
-function loadShops() {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'))
-      shops = new Map(Object.entries(data))
-      console.log(`✅ 已加载 ${shops.size} 个分店配置`)
-    } else {
-      // 默认数据（仅首次运行）
-      shops.set('testclient', {
-        shopId: 'testclient',
-        name: '测试分店',
-        printers: [
-          { ip: '192.168.0.31', port: 9100, name: '厨房打印机1', type: 'kitchen' },
-          { ip: '192.168.0.30', port: 9100, name: '前台打印机1', type: 'front' }
-        ]
-      })
-      saveShops()
-      console.log('✅ 已创建默认配置文件')
-    }
-  } catch (error) {
-    console.error('❌ 加载数据失败:', error.message)
-    shops = new Map()
+/**
+ * Ensure data directory and file exist
+ */
+async function ensureDataFile() {
+  await fs.ensureDir(DATA_DIR)
+  if (!(await fs.pathExists(DATA_FILE))) {
+    await fs.writeJson(
+      DATA_FILE,
+      {
+        shops: [],
+        updatedAt: new Date().toISOString()
+      },
+      { spaces: 2 }
+    )
   }
 }
-
-// 保存数据
-function saveShops() {
-  try {
-    const data = Object.fromEntries(shops)
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8')
-    return true
-  } catch (error) {
-    console.error('❌ 保存数据失败:', error.message)
-    return false
-  }
-}
-
-// 初始化加载数据
-loadShops()
-
-// ============================================
-// API 接口
-// ============================================
 
 /**
- * 获取所有分店列表
+ * Load shops data
  */
-app.get('/api/shops', async (req, res) => {
+async function loadData() {
+  await ensureDataFile()
   try {
-    // 获取已连接的代理
-    const agentsResponse = await axios.get(`${PRINT_SERVER_URL}/api/print/agents`)
-    const connectedAgents = agentsResponse.data.agents || []
-    const connectedShopIds = new Set(connectedAgents.filter(a => a.connected).map(a => a.shopId))
+    const raw = await fs.readJson(DATA_FILE)
+    let shops = []
 
-    // 合并数据
-    const shopsList = Array.from(shops.values()).map(shop => ({
-      ...shop,
-      connected: connectedShopIds.has(shop.shopId)
+    if (Array.isArray(raw?.shops)) {
+      shops = raw.shops
+    } else if (Array.isArray(raw)) {
+      shops = raw
+    } else if (raw && typeof raw === 'object') {
+      // legacy format: { "shopId": { ... }, ... }
+      const values = Object.values(raw).filter((item) => item && typeof item === 'object')
+      if (values.length > 0 && !raw.updatedAt) {
+        shops = values
+      }
+    }
+
+    shops = shops.map((shop) => ({
+      shopId: shop.shopId,
+      name: shop.name || shop.shopId,
+      managerCompanyId: shop.managerCompanyId || '',
+      printers: Array.isArray(shop.printers) ? shop.printers : [],
+      agentBaseUrl: shop.agentBaseUrl || '',
+      backupAgentBaseUrls: parseStringArray(shop.backupAgentBaseUrls),
+      allowSelfSigned: !!shop.allowSelfSigned
     }))
 
-    res.json({
-      success: true,
-      shops: shopsList,
-      total: shopsList.length,
-      connected: connectedShopIds.size
-    })
+    return { shops }
   } catch (error) {
-    console.error('获取分店列表失败:', error.message)
-    res.status(500).json({
-      success: false,
-      error: error.message
-    })
+    console.error('[admin] Failed to read data file:', error)
+    return { shops: [] }
   }
-})
+}
 
 /**
- * 获取单个分店信息
+ * Persist shops data
  */
-app.get('/api/shops/:shopId', (req, res) => {
-  const { shopId } = req.params
-  const shop = shops.get(shopId)
-
-  if (!shop) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
+async function saveData(shops) {
+  await ensureDataFile()
+  const payload = {
+    shops,
+    updatedAt: new Date().toISOString()
   }
-
-  res.json({
-    success: true,
-    shop
-  })
-})
+  await fs.writeJson(DATA_FILE, payload, { spaces: 2 })
+  return payload
+}
 
 /**
- * 创建或更新分店
+ * Fetch connected agents information from print server
  */
-app.post('/api/shops', (req, res) => {
-  const { shopId, name, printers } = req.body
-
-  if (!shopId) {
-    return res.status(400).json({
-      success: false,
-      error: 'shopId 是必需的'
+async function fetchAgents() {
+  try {
+    const { data } = await axios.get(`${PRINT_SERVER_URL}/api/print/agents`, {
+      timeout: 5000
     })
+    if (Array.isArray(data?.agents)) {
+      return data.agents
+    }
+    if (Array.isArray(data)) {
+      return data
+    }
+    return []
+  } catch (error) {
+    console.warn('[admin] Failed to fetch agents:', error.message)
+    return []
   }
-
-  const shop = {
-    shopId,
-    name: name || shopId,
-    printers: printers || []
-  }
-
-  shops.set(shopId, shop)
-  saveShops()
-
-  res.json({
-    success: true,
-    shop
-  })
-})
+}
 
 /**
- * 更新分店
+ * Normalise printer payload
  */
-app.put('/api/shops/:shopId', (req, res) => {
-  const { shopId } = req.params
-  const { name, printers } = req.body
-
-  if (!shops.has(shopId)) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
+function normalisePrinter(printer) {
+  if (!printer || typeof printer !== 'object') {
+    return null
   }
 
-  const shop = shops.get(shopId)
-  if (name) shop.name = name
-  if (printers) shop.printers = printers
-
-  shops.set(shopId, shop)
-  saveShops()
-
-  res.json({
-    success: true,
-    shop
-  })
-})
-
-/**
- * 删除分店
- */
-app.delete('/api/shops/:shopId', (req, res) => {
-  const { shopId } = req.params
-
-  if (!shops.has(shopId)) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
+  const ip = String(printer.ip || printer.host || '').trim()
+  if (!ip) {
+    return null
   }
 
-  shops.delete(shopId)
-  saveShops()
-
-  res.json({
-    success: true,
-    message: '分店已删除'
-  })
-})
-
-/**
- * 添加打印机
- */
-app.post('/api/shops/:shopId/printers', (req, res) => {
-  const { shopId } = req.params
-  const { ip, port, name, type } = req.body
-
-  if (!shopId || !ip) {
-    return res.status(400).json({
-      success: false,
-      error: 'shopId 和 ip 是必需的'
-    })
-  }
-
-  if (!shops.has(shopId)) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
-  }
-
-  const shop = shops.get(shopId)
-  const printer = {
+  const port = Number(printer.port || printer.tcpPort || 9100)
+  return {
     ip,
-    port: port || 9100,
-    name: name || `${ip}:${port || 9100}`,
-    type: type || 'kitchen'
+    port: Number.isFinite(port) ? port : 9100,
+    name: printer.name ? String(printer.name).trim() : '',
+    type: printer.type ? String(printer.type).trim() : 'kitchen'
   }
-
-  shop.printers.push(printer)
-  shops.set(shopId, shop)
-  saveShops()
-
-  res.json({
-    success: true,
-    printer,
-    shop
-  })
-})
+}
 
 /**
- * 删除打印机
+ * Helper: convert array-like / string to array
  */
-app.delete('/api/shops/:shopId/printers/:ip', (req, res) => {
-  const { shopId, ip } = req.params
-
-  if (!shops.has(shopId)) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
+function parseStringArray(value) {
+  if (!value) return []
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0)
   }
-
-  const shop = shops.get(shopId)
-  shop.printers = shop.printers.filter(p => p.ip !== ip)
-  shops.set(shopId, shop)
-  saveShops()
-
-  res.json({
-    success: true,
-    shop
-  })
-})
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+}
 
 /**
- * 测试打印机连接
+ * Compute base URL for deploy script command
  */
-app.post('/api/shops/:shopId/printers/:ip/test', async (req, res) => {
-  const { shopId, ip } = req.params
-  const { port } = req.body
-
-  if (!shops.has(shopId)) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
+function resolvePublicBaseUrl(req) {
+  if (PUBLIC_BASE_URL) {
+    return PUBLIC_BASE_URL.replace(/\/$/, '')
   }
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http'
+  const host = req.get('host') || `localhost:${PORT}`
+  return `${protocol}://${host}`.replace(/\/$/, '')
+}
 
-  const shop = shops.get(shopId)
-  const printer = shop.printers.find(p => p.ip === ip)
+function buildDeploymentScript(shopId, wsUrl, platform = 'wsl') {
+  const isMac = ['mac', 'darwin', 'macos', 'osx'].includes(platform)
+  const shebang = '#!/usr/bin/env bash'
 
-  if (!printer) {
-    return res.status(404).json({
-      success: false,
-      error: '打印机不存在'
-    })
-  }
+  const header = `# 🖨️ Print Agent Local Deployment Script
 
-  try {
-    // 发送测试打印请求
-    const testData = Buffer.from(`测试打印\n时间: ${new Date().toLocaleString('zh-CN')}\n打印机: ${ip}:${port || printer.port}\n`)
-    
-    const response = await axios.post(
-      `${PRINT_SERVER_URL}/api/print?host=${ip}&port=${port || printer.port}`,
-      testData,
-      {
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'X-Shop-Name': shopId
-        },
-        timeout: 10000
-      }
-    )
-
-    res.json({
-      success: true,
-      message: '测试打印已发送',
-      response: response.data
-    })
-  } catch (error) {
-    console.error('测试打印失败:', error.message)
-    res.status(500).json({
-      success: false,
-      error: error.response?.data?.error || error.message
-    })
-  }
-})
-
-/**
- * 获取已连接的代理列表
- */
-app.get('/api/agents', async (req, res) => {
-  try {
-    const response = await axios.get(`${PRINT_SERVER_URL}/api/print/agents`)
-    res.json({
-      success: true,
-      ...response.data
-    })
-  } catch (error) {
-    console.error('获取代理列表失败:', error.message)
-    res.status(500).json({
-      success: false,
-      error: error.message
-    })
-  }
-})
-
-/**
- * 下载 local-print-agent.js 文件
- */
-app.get('/api/download/agent', (req, res) => {
-  const fs = require('fs')
-  const agentPath = path.join(__dirname, '..', 'agent', 'local-print-agent.js')
-  
-  if (fs.existsSync(agentPath)) {
-    res.setHeader('Content-Type', 'application/javascript')
-    res.setHeader('Content-Disposition', 'attachment; filename="local-print-agent.js"')
-    res.sendFile(agentPath)
-  } else {
-    res.status(404).json({ success: false, error: '文件不存在' })
-  }
-})
-
-/**
- * 生成部署脚本（返回 JSON，包含 curl 命令）
- */
-app.get('/api/shops/:shopId/deploy', (req, res) => {
-  const { shopId } = req.params
-  const shop = shops.get(shopId)
-
-  if (!shop) {
-    return res.status(404).json({
-      success: false,
-      error: '分店不存在'
-    })
-  }
-
-  // 生成 curl 命令
-  const protocol = req.protocol || 'https'
-  const host = req.get('host') || 'pa.easyify.uk'
-  const curlCommand = `curl -s ${protocol}://${host}/api/shops/${shopId}/deploy.sh | bash`
-
-  res.json({
-    success: true,
-    shopId,
-    curlCommand,
-    deployUrl: `${protocol}://${host}/api/shops/${shopId}/deploy.sh`
-  })
-})
-
-/**
- * 生成部署脚本（返回可执行的 bash 脚本）
- */
-app.get('/api/shops/:shopId/deploy.sh', (req, res) => {
-  const { shopId } = req.params
-  const shop = shops.get(shopId)
-
-  if (!shop) {
-    return res.status(404).send('#!/bin/bash\necho "错误: 分店不存在"\nexit 1\n')
-  }
-
-  // 获取协议和主机
-  const protocol = req.protocol || (req.get('x-forwarded-proto') || 'https')
-  const host = req.get('host') || 'pa.easyify.uk'
-  const baseUrl = `${protocol}://${host}`
-
-  // 生成 WSL 一键部署脚本
-  const deployScript = `#!/bin/bash
-# 打印代理一键部署脚本 - ${shop.name} (${shopId})
-# 适用于 Windows WSL (Ubuntu/Debian)
+${shebang}
 
 set -e
+`
 
-BASE_URL="${baseUrl}"
-
-echo "════════════════════════════════════════════════════════════"
-echo "🚀 打印代理一键部署"
-echo "════════════════════════════════════════════════════════════"
-echo ""
-echo "分店: ${shop.name} (${shopId})"
-echo ""
-
-# 检查 Node.js
-if ! command -v node &> /dev/null; then
-    echo "📦 安装 Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-    echo "✅ Node.js 安装完成"
-else
-    echo "✅ Node.js 已安装: $(node --version)"
+  const envCheck = isMac
+    ? `if [ "$(uname)" != "Darwin" ]; then
+  echo "❌ 此脚本仅适用于 macOS"
+  exit 1
 fi
+`
+    : ''
 
-# 创建工作目录
-WORK_DIR="$HOME/print-agent"
-mkdir -p "$WORK_DIR/agent"
-cd "$WORK_DIR"
+  const installNodeSection = isMac
+    ? `ensure_node() {
+  if command -v node >/dev/null 2>&1; then
+    return
+  fi
 
+  echo "⚠️  未检测到 Node.js，尝试使用 Homebrew 安装..."
+  if command -v brew >/dev/null 2>&1; then
+    brew update >/dev/null 2>&1 || true
+    brew install node@18 || brew install node
+  else
+    echo "❌ 未检测到 Homebrew，请先安装 Homebrew 后再运行本脚本"
+    echo "👉 安装命令: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "❌ Node.js 安装失败，请手动安装 Node.js 18 或以上版本"
+    exit 1
+  fi
+}
+
+ensure_node
+`
+    : `ensure_node() {
+  if command -v node >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "⚠️  未检测到 Node.js，尝试自动安装 Node.js 18..."
+
+  if command -v apt-get >/dev/null 2>&1; then
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash - >/dev/null 2>&1
+    sudo apt-get install -y nodejs >/dev/null 2>&1
+  elif command -v yum >/dev/null 2>&1; then
+    curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash - >/dev/null 2>&1
+    sudo yum install -y nodejs >/dev/null 2>&1
+  else
+    echo "❌ 未检测到受支持的包管理器 (apt / yum)，请手动安装 Node.js 18 或以上版本"
+    exit 1
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    echo "❌ Node.js 安装失败，请手动安装 Node.js 18 或以上版本"
+    exit 1
+  fi
+}
+
+ensure_node
+`
+
+  const installDir = isMac ? '${PRINT_AGENT_DIR:-$HOME/Library/PrintAgent}' : '${PRINT_AGENT_DIR:-$HOME/print-agent-local}'
+
+  return `${header}${envCheck}${installNodeSection}
+SHOP_ID="${shopId}"
+SERVER_WS_URL="${wsUrl}"
+INSTALL_DIR="${installDir}"
+
+echo "🚀 正在为分店 \${SHOP_ID} 部署本地打印代理..."
+echo "📂 安装目录：\${INSTALL_DIR}"
 echo ""
-echo "📥 下载项目文件..."
 
-# 下载 package.json
-cat > agent/package.json << 'PKG_EOF'
+mkdir -p "\${INSTALL_DIR}"
+cd "\${INSTALL_DIR}"
+
+if [ ! -f package.json ]; then
+cat <<'PKG' > package.json
 {
   "name": "print-agent-client",
   "version": "2.0.0",
-  "description": "本地打印代理客户端",
+  "description": "Print agent local connector",
   "main": "local-print-agent.js",
   "scripts": {
     "start": "node local-print-agent.js"
@@ -472,500 +295,450 @@ cat > agent/package.json << 'PKG_EOF'
     "ws": "8.18.3"
   }
 }
-PKG_EOF
+PKG
+fi
 
-# 下载 local-print-agent.js
-echo "📥 下载 local-print-agent.js..."
-curl -fsSL $BASE_URL/api/download/agent -o agent/local-print-agent.js || {
-    echo "⚠️  无法从 GitHub 下载，使用备用方法..."
-    cat > agent/local-print-agent.js << 'AGENT_EOF'
-#!/usr/bin/env node
-const WebSocket = require('ws');
-const net = require('net');
-const iconv = require('iconv-lite');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+npm install --production >/dev/null
 
-const CONFIG_FILE = path.join(__dirname, 'config.json');
-const DEFAULT_CONFIG = {
-  shopId: 'shop1',
-  serverUrl: 'ws://printer1.easyify.uk/print-agent',
-  reconnectInterval: 5000,
-  heartbeatInterval: 30000,
-  logLevel: 'info'
-};
-
-let config = { ...DEFAULT_CONFIG };
-
-function loadConfig() {
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      const fileContent = fs.readFileSync(CONFIG_FILE, 'utf-8');
-      const fileConfig = JSON.parse(fileContent);
-      config = { ...DEFAULT_CONFIG, ...fileConfig };
-      log('info', \`✅ 已加载配置文件: \${CONFIG_FILE}\`);
-    } else {
-      log('warn', \`⚠️  配置文件不存在: \${CONFIG_FILE}\`);
-      saveConfig();
-    }
-  } catch (error) {
-    log('error', \`❌ 加载配置文件失败: \${error.message}\`);
-  }
-}
-
-function saveConfig() {
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
-  } catch (error) {
-    log('error', \`❌ 保存配置文件失败: \${error.message}\`);
-  }
-}
-
-const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
-
-function log(level, message) {
-  const levelNum = LOG_LEVELS[level] || 1;
-  const configLevelNum = LOG_LEVELS[config.logLevel] || 1;
-  if (levelNum < configLevelNum) return;
-  const timestamp = new Date().toISOString();
-  const prefix = { debug: '🔍', info: 'ℹ️ ', warn: '⚠️ ', error: '❌' }[level] || 'ℹ️ ';
-  console.log(\`[\${timestamp}] \${prefix} \${message}\`);
-}
-
-let ws = null;
-let reconnectTimer = null;
-let heartbeatTimer = null;
-let isConnecting = false;
-let isShuttingDown = false;
-
-function connect() {
-  if (isConnecting || isShuttingDown) return;
-  isConnecting = true;
-  log('info', \`正在连接到服务器: \${config.serverUrl}\`);
-  
-  try {
-    const wsOptions = {
-      headers: {
-        'X-Shop-Id': config.shopId,
-        'User-Agent': \`LocalPrintAgent/2.0.0 (\${os.platform()})\`
-      }
-    };
-    
-    if (config.rejectUnauthorized === false) {
-      wsOptions.rejectUnauthorized = false;
-    }
-    
-    ws = new WebSocket(config.serverUrl, wsOptions);
-
-    ws.on('open', () => {
-      isConnecting = false;
-      log('info', '✅ 已连接到服务器');
-      startHeartbeat();
-      sendMessage({
-        type: 'register',
-        shopId: config.shopId,
-        version: '2.0.0',
-        platform: os.platform(),
-        hostname: os.hostname()
-      });
-    });
-
-    ws.on('message', async (data) => {
-      try {
-        const message = JSON.parse(data.toString());
-        await handleMessage(message);
-      } catch (error) {
-        log('error', \`处理消息失败: \${error.message}\`);
-      }
-    });
-
-    ws.on('close', (code, reason) => {
-      isConnecting = false;
-      stopHeartbeat();
-      log('warn', \`连接已关闭 (代码: \${code}, 原因: \${reason || '未知'})\`);
-      if (!isShuttingDown) {
-        log('info', \`\${config.reconnectInterval / 1000}秒后尝试重连...\`);
-        reconnectTimer = setTimeout(connect, config.reconnectInterval);
-      }
-    });
-
-    ws.on('error', (error) => {
-      isConnecting = false;
-      log('error', \`WebSocket 错误: \${error.message}\`);
-    });
-
-    ws.on('pong', () => {
-      log('debug', '收到服务器心跳响应');
-    });
-
-  } catch (error) {
-    isConnecting = false;
-    log('error', \`连接失败: \${error.message}\`);
-    if (!isShuttingDown) {
-      reconnectTimer = setTimeout(connect, config.reconnectInterval);
-    }
-  }
-}
-
-function sendMessage(message) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      ws.send(JSON.stringify(message));
-      log('debug', \`发送消息: \${message.type}\`);
-    } catch (error) {
-      log('error', \`发送消息失败: \${error.message}\`);
-    }
-  }
-}
-
-function startHeartbeat() {
-  stopHeartbeat();
-  heartbeatTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.ping();
-      log('debug', '发送心跳');
-    }
-  }, config.heartbeatInterval);
-}
-
-function stopHeartbeat() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
-}
-
-async function handleMessage(message) {
-  log('debug', \`收到消息: \${message.type}\`);
-  
-  switch (message.type) {
-    case 'print':
-      await handlePrintTask(message);
-      break;
-    case 'ping':
-      sendMessage({ type: 'pong' });
-      break;
-  }
-}
-
-async function handlePrintTask(task) {
-  const { taskId, printerIP, port, data, encoding = 'base64' } = task;
-  log('info', \`📄 收到打印任务: \${taskId}\`);
-  
-  try {
-    let printData;
-    if (typeof data === 'string') {
-      if (encoding === 'base64') {
-        const utf8Buffer = Buffer.from(data, 'base64');
-        printData = iconv.encode(utf8Buffer.toString('utf-8'), 'GBK');
-      } else {
-        printData = iconv.encode(data, 'GBK');
-      }
-    } else if (Buffer.isBuffer(data)) {
-      printData = iconv.encode(data.toString('utf-8'), 'GBK');
-    } else {
-      throw new Error('无效的数据格式');
-    }
-    
-    const result = await printToPrinter(printerIP, port || 9100, printData);
-    
-    sendMessage({
-      type: 'print_result',
-      taskId: taskId,
-      success: true,
-      bytesSent: result.bytesSent,
-      timestamp: new Date().toISOString()
-    });
-    
-    log('info', \`✅ 打印任务完成: \${taskId}\`);
-    
-  } catch (error) {
-    log('error', \`❌ 打印任务失败: \${taskId} - \${error.message}\`);
-    sendMessage({
-      type: 'print_result',
-      taskId: taskId,
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-}
-
-function printToPrinter(printerIP, port, data) {
-  return new Promise((resolve, reject) => {
-    const client = new net.Socket();
-    let connected = false;
-    let timeout;
-    
-    timeout = setTimeout(() => {
-      if (!connected) {
-        client.destroy();
-        reject(new Error('连接打印机超时'));
-      }
-    }, 10000);
-    
-    client.connect(port, printerIP, () => {
-      connected = true;
-      clearTimeout(timeout);
-      log('debug', \`✅ 已连接到打印机: \${printerIP}:\${port}\`);
-      
-      client.write(data, (err) => {
-        if (err) {
-          client.destroy();
-          reject(err);
-        } else {
-          log('debug', \`✅ 数据已发送: \${data.length} 字节\`);
-          client.end();
-          resolve({ bytesSent: data.length });
-        }
-      });
-    });
-    
-    client.on('error', (err) => {
-      clearTimeout(timeout);
-      log('error', \`打印机连接错误: \${err.message}\`);
-      reject(err);
-    });
-    
-    client.on('close', () => {
-      clearTimeout(timeout);
-    });
-  });
-}
-
-function shutdown() {
-  log('info', '正在关闭服务...');
-  isShuttingDown = true;
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  stopHeartbeat();
-  if (ws) ws.close();
-  setTimeout(() => {
-    log('info', '服务已关闭');
-    process.exit(0);
-  }, 1000);
-}
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-function start() {
-  console.log('');
-  console.log('════════════════════════════════════════════════════════════');
-  console.log('🖨️  本地打印代理服务');
-  console.log('════════════════════════════════════════════════════════════');
-  console.log('');
-  
-  loadConfig();
-  log('info', '正在启动服务...');
-  connect();
-  
-  if (config.enableStatusServer !== false) {
-    const http = require('http');
-    const statusServer = http.createServer((req, res) => {
-      if (req.url === '/status' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          status: ws && ws.readyState === WebSocket.OPEN ? 'connected' : 'disconnected',
-          shopId: config.shopId,
-          serverUrl: config.serverUrl,
-          uptime: process.uptime(),
-          platform: os.platform(),
-          hostname: os.hostname()
-        }));
-      } else {
-        res.writeHead(404);
-        res.end('Not Found');
-      }
-    });
-    
-    statusServer.listen(0, '127.0.0.1', () => {
-      const port = statusServer.address().port;
-      log('info', \`状态服务运行在: http://127.0.0.1:\${port}/status\`);
-    });
-  }
-}
-
-start();
-AGENT_EOF
-}
-
-# 创建配置文件
-cat > agent/config.json << CONFIG_EOF
+cat <<'CONFIG' > config.json
 {
   "shopId": "${shopId}",
-  "serverUrl": "ws://printer1.easyify.uk/print-agent",
+  "serverUrl": "${wsUrl}",
   "reconnectInterval": 5000,
   "heartbeatInterval": 30000,
   "logLevel": "info",
   "enableStatusServer": true,
-  "rejectUnauthorized": false,
-  "printers": [
-${shop.printers.map(p => `    "${p.ip}"`).join(',\n')}
-  ]
+  "rejectUnauthorized": false
 }
-CONFIG_EOF
+CONFIG
 
-echo "✅ 配置文件已创建"
-
-# 安装依赖
-echo ""
-echo "📦 安装依赖..."
-cd agent
-npm install
+cat <<'AGENT' > local-print-agent.js
+${LOCAL_AGENT_SOURCE}
+AGENT
 
 echo ""
-echo "✅ 部署完成！"
+echo "✅ 配置完成。"
+echo "👉 请在新的终端中运行以下命令启动代理："
 echo ""
-
-# 安装 PM2（如果未安装）
-if ! command -v pm2 &> /dev/null; then
-    echo "📦 安装 PM2..."
-
-    INSTALL_OK=false
-
-    if npm install -g pm2; then
-        INSTALL_OK=true
-    else
-        echo "⚠️  无法以普通用户安装 PM2，尝试使用 sudo..."
-        if command -v sudo &> /dev/null; then
-            if sudo npm install -g pm2; then
-                INSTALL_OK=true
-            else
-                echo "⚠️  使用 sudo 安装失败"
-            fi
-        else
-            echo "⚠️  系统未提供 sudo"
-        fi
-
-        # 如果仍然失败，尝试安装到用户目录
-        if [ "$INSTALL_OK" != true ]; then
-            echo "⚠️  尝试安装到用户目录 ~/.npm-global ..."
-            USER_NPM_PREFIX="$HOME/.npm-global"
-            mkdir -p "$USER_NPM_PREFIX"
-            npm config set prefix "$USER_NPM_PREFIX" >/dev/null 2>&1 || true
-            if ! grep -q "npm-global" "$HOME/.bashrc" 2>/dev/null; then
-                echo "export PATH=\$HOME/.npm-global/bin:\$PATH" >> "$HOME/.bashrc"
-                echo "✅ 已将 ~/.npm-global/bin 添加到 ~/.bashrc"
-            fi
-            export PATH="$USER_NPM_PREFIX/bin:$PATH"
-
-            if npm install -g pm2; then
-                INSTALL_OK=true
-                echo "✅ PM2 已安装到用户目录 ~/.npm-global/bin"
-            else
-                echo "❌  安装到用户目录仍失败"
-            fi
-        fi
-    fi
-
-    if [ "$INSTALL_OK" = true ]; then
-        echo "✅ PM2 安装完成"
-    else
-        echo "❌ PM2 安装失败，无法继续部署"
-        exit 1
-    fi
-else
-    echo "✅ PM2 已安装: $(pm2 --version)"
-fi
-
-echo "🚀 启动服务（PM2）..."
-
-# 停止旧进程（如果存在）
-pm2 stop print-agent 2>/dev/null || true
-pm2 delete print-agent 2>/dev/null || true
-
-# 启动新进程
-pm2 start local-print-agent.js --name print-agent --log-date-format "YYYY-MM-DD HH:mm:ss Z"
-
-# 保存 PM2 配置
-pm2 save
-
+echo "   cd \${INSTALL_DIR}"
+echo "   node local-print-agent.js"
 echo ""
-echo "✅ 服务已启动！"
-echo ""
-
-# 配置开机自启动
-echo "⚙️  配置开机自启动..."
-echo ""
-
-# 方法 1: 尝试使用 systemd（WSL2 支持）
-if [ -d /run/systemd/system ] || [ -d /usr/lib/systemd ]; then
-    echo "检测到 systemd，尝试自动配置 PM2 startup..."
-
-    PM2_BIN=$(command -v pm2)
-    SANITIZED_PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.npm-global/bin:$PATH"
-
-    if sudo env "PATH=$SANITIZED_PATH" "$PM2_BIN" startup systemd -u "$USER" --hp "$HOME"; then
-        echo "✅ PM2 startup 配置成功"
-        sudo systemctl daemon-reload 2>/dev/null || true
-        sudo systemctl enable pm2-$USER 2>/dev/null || true
-        pm2 save
-    else
-        echo "❌ 自动配置 PM2 startup 失败"
-        echo "   请手动执行以下命令："
-        echo "   sudo env \"PATH=$SANITIZED_PATH\" $PM2_BIN startup systemd -u $USER --hp $HOME"
-        echo "   pm2 save"
-    fi
-else
-    echo "未检测到 systemd，跳过自动配置。"
-    echo ""
-    echo "📋 请在 Windows 中创建计划任务或启动脚本，执行以下命令："
-    echo "   wsl.exe -d $(wsl.exe -l -v 2>/dev/null | grep -i 'running' | head -1 | awk '{print $1}' || echo "Ubuntu") -u $(whoami) bash -lc 'cd ~/print-agent/agent && pm2 resurrect'"
-    echo ""
-fi
-
-    echo ""
-
-    echo "📊 查看服务状态："
-    echo "  pm2 status"
-    echo ""
-    echo "📋 查看日志："
-    echo "  pm2 logs print-agent"
-    echo ""
-    echo "🛑 停止服务："
-    echo "  pm2 stop print-agent"
-    echo ""
-    echo "🔄 重启服务："
-    echo "  pm2 restart print-agent"
-    echo ""
+${isMac ? 'echo "💡 可选：配置 launchctl 让代理随 macOS 启动。"\n' : 'echo "💡 建议配置 systemd/pm2 实现自启动。"\n'}
 `
+}
 
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-  res.setHeader('Content-Disposition', `inline; filename="deploy-${shopId}.sh"`)
-  res.send(deployScript)
+/**
+ * GET /api/shops
+ */
+app.get('/api/shops', async (req, res) => {
+  try {
+    const [{ shops }, agents] = await Promise.all([loadData(), fetchAgents()])
+    const connectedSet = new Set(agents.filter((agent) => agent.connected).map((agent) => agent.shopId))
+
+    const result = shops.map((shop) => ({
+      shopId: shop.shopId,
+      name: shop.name || shop.shopId,
+      managerCompanyId: shop.managerCompanyId || '',
+      agentBaseUrl: shop.agentBaseUrl || '',
+      backupAgentBaseUrls: parseStringArray(shop.backupAgentBaseUrls),
+      allowSelfSigned: !!shop.allowSelfSigned,
+      printers: Array.isArray(shop.printers) ? shop.printers : [],
+      connected: connectedSet.has(shop.shopId)
+    }))
+
+    const connectedCount = result.filter((shop) => shop.connected).length
+
+    res.json({
+      success: true,
+      total: result.length,
+      connected: connectedCount,
+      shops: result
+    })
+  } catch (error) {
+    console.error('[admin] Failed to load shops:', error)
+    res.status(500).json({ success: false, error: '无法获取分店数据' })
+  }
 })
 
 /**
- * 下载 WSL 网络修复脚本
+ * GET /api/agents (proxy upstream status)
  */
-app.get('/fix-wsl-network.sh', (req, res) => {
-  const scriptPath = path.join(__dirname, 'public', 'fix-wsl-network.sh')
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-  res.setHeader('Content-Disposition', 'inline; filename="fix-wsl-network.sh"')
-  res.sendFile(scriptPath)
+app.get('/api/agents', async (req, res) => {
+  try {
+    const { data } = await axios.get(`${PRINT_SERVER_URL}/api/print/agents`, {
+      timeout: 5000
+    })
+    res.json({
+      success: true,
+      agents: data?.agents || [],
+      total: data?.total ?? (data?.agents?.length || 0),
+      connected: data?.connected ?? (data?.agents?.filter((a) => a.connected).length || 0)
+    })
+  } catch (error) {
+    console.error('[admin] Failed to proxy /api/agents:', error.message)
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      agents: []
+    })
+  }
 })
 
 /**
- * 根路径 - 返回管理界面
+ * POST /api/shops
  */
-app.get('/', (req, res) => {
+app.post('/api/shops', async (req, res) => {
+  const shopId = String(req.body?.shopId || '').trim()
+  if (!shopId) {
+    return res.status(400).json({ success: false, error: 'shopId 不能为空' })
+  }
+
+  const name = String(req.body?.name || '').trim()
+  const managerCompanyId = req.body?.managerCompanyId
+    ? String(req.body.managerCompanyId).trim()
+    : ''
+
+  try {
+    const data = await loadData()
+    if (data.shops.some((shop) => shop.shopId === shopId)) {
+      return res.status(409).json({ success: false, error: '该 shopId 已存在' })
+    }
+
+    const newShop = {
+      shopId,
+      name: name || shopId,
+      managerCompanyId,
+      printers: [],
+      agentBaseUrl: req.body?.agentBaseUrl ? String(req.body.agentBaseUrl).trim() : '',
+      backupAgentBaseUrls: parseStringArray(req.body?.backupAgentBaseUrls),
+      allowSelfSigned: !!req.body?.allowSelfSigned
+    }
+
+    data.shops.push(newShop)
+    await saveData(data.shops)
+
+    res.json({ success: true, shop: newShop })
+  } catch (error) {
+    console.error('[admin] Failed to create shop:', error)
+    res.status(500).json({ success: false, error: '创建分店失败' })
+  }
+})
+
+/**
+ * PUT /api/shops/:shopId
+ */
+app.put('/api/shops/:shopId', async (req, res) => {
+  const targetId = String(req.params.shopId || '').trim()
+  if (!targetId) {
+    return res.status(400).json({ success: false, error: 'shopId 无效' })
+  }
+
+  try {
+    const data = await loadData()
+    const shop = data.shops.find((item) => item.shopId === targetId)
+    if (!shop) {
+      return res.status(404).json({ success: false, error: '分店不存在' })
+    }
+
+    if (req.body?.name !== undefined) {
+      shop.name = String(req.body.name || '').trim() || shop.shopId
+    }
+
+    if (req.body?.managerCompanyId !== undefined) {
+      const managerCompanyId = String(req.body.managerCompanyId || '').trim()
+      shop.managerCompanyId = managerCompanyId
+    }
+
+    if (req.body?.agentBaseUrl !== undefined) {
+      shop.agentBaseUrl = String(req.body.agentBaseUrl || '').trim()
+    }
+
+    if (req.body?.backupAgentBaseUrls !== undefined) {
+      shop.backupAgentBaseUrls = parseStringArray(req.body.backupAgentBaseUrls)
+    }
+
+    if (req.body?.allowSelfSigned !== undefined) {
+      shop.allowSelfSigned = !!req.body.allowSelfSigned
+    }
+
+    if (Array.isArray(req.body?.printers)) {
+      const printers = req.body.printers
+        .map(normalisePrinter)
+        .filter(Boolean)
+      shop.printers = printers
+    }
+
+    await saveData(data.shops)
+
+    res.json({ success: true, shop })
+  } catch (error) {
+    console.error('[admin] Failed to update shop:', error)
+    res.status(500).json({ success: false, error: '更新分店失败' })
+  }
+})
+
+/**
+ * DELETE /api/shops/:shopId
+ */
+app.delete('/api/shops/:shopId', async (req, res) => {
+  const targetId = String(req.params.shopId || '').trim()
+  if (!targetId) {
+    return res.status(400).json({ success: false, error: 'shopId 无效' })
+  }
+
+  try {
+    const data = await loadData()
+    const filtered = data.shops.filter((shop) => shop.shopId !== targetId)
+    if (filtered.length === data.shops.length) {
+      return res.status(404).json({ success: false, error: '分店不存在' })
+    }
+    await saveData(filtered)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[admin] Failed to delete shop:', error)
+    res.status(500).json({ success: false, error: '删除分店失败' })
+  }
+})
+
+/**
+ * POST /api/shops/:shopId/printers
+ */
+app.post('/api/shops/:shopId/printers', async (req, res) => {
+  const targetId = String(req.params.shopId || '').trim()
+  if (!targetId) {
+    return res.status(400).json({ success: false, error: 'shopId 无效' })
+  }
+
+  const printer = normalisePrinter(req.body)
+  if (!printer) {
+    return res.status(400).json({ success: false, error: '打印机信息无效' })
+  }
+
+  try {
+    const data = await loadData()
+    const shop = data.shops.find((item) => item.shopId === targetId)
+    if (!shop) {
+      return res.status(404).json({ success: false, error: '分店不存在' })
+    }
+
+    const existingIndex = Array.isArray(shop.printers)
+      ? shop.printers.findIndex((item) => item.ip === printer.ip)
+      : -1
+
+    if (existingIndex >= 0) {
+      shop.printers[existingIndex] = printer
+    } else {
+      shop.printers = Array.isArray(shop.printers) ? shop.printers : []
+      shop.printers.push(printer)
+    }
+
+    await saveData(data.shops)
+    res.json({ success: true, printer })
+  } catch (error) {
+    console.error('[admin] Failed to add printer:', error)
+    res.status(500).json({ success: false, error: '添加打印机失败' })
+  }
+})
+
+/**
+ * DELETE /api/shops/:shopId/printers/:ip
+ */
+app.delete('/api/shops/:shopId/printers/:ip', async (req, res) => {
+  const targetId = String(req.params.shopId || '').trim()
+  const printerIp = String(req.params.ip || '').trim()
+
+  if (!targetId || !printerIp) {
+    return res.status(400).json({ success: false, error: '参数无效' })
+  }
+
+  try {
+    const data = await loadData()
+    const shop = data.shops.find((item) => item.shopId === targetId)
+    if (!shop) {
+      return res.status(404).json({ success: false, error: '分店不存在' })
+    }
+
+    const before = Array.isArray(shop.printers) ? shop.printers.length : 0
+    shop.printers = Array.isArray(shop.printers)
+      ? shop.printers.filter((printer) => printer.ip !== printerIp)
+      : []
+
+    if (shop.printers.length === before) {
+      return res.status(404).json({ success: false, error: '打印机不存在' })
+    }
+
+    await saveData(data.shops)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[admin] Failed to delete printer:', error)
+    res.status(500).json({ success: false, error: '删除打印机失败' })
+  }
+})
+
+/**
+ * POST /api/shops/:shopId/printers/:ip/test
+ */
+app.post('/api/shops/:shopId/printers/:ip/test', async (req, res) => {
+  const targetId = String(req.params.shopId || '').trim()
+  const printerIp = String(req.params.ip || '').trim()
+  const port = Number(req.body?.port || 9100)
+
+  if (!targetId || !printerIp) {
+    return res.status(400).json({ success: false, error: '参数无效' })
+  }
+
+  try {
+    // Build a simple ESC/POS test receipt
+    const testContent = Buffer.from(
+      '\x1B@\x1B!\x38PRINT AGENT TEST\n\x1B!\x00\n🖨️ 打印测试成功\n\n\x1B!\x01Shop: ' +
+        targetId +
+        '\nPrinter: ' +
+        printerIp +
+        ':' +
+        port +
+        '\n\n\x1DVA\x00',
+      'binary'
+    )
+
+    await axios.post(`${PRINT_SERVER_URL}/api/print`, testContent, {
+      params: {
+        host: printerIp,
+        port: Number.isFinite(port) ? port : 9100
+      },
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Shop-Name': targetId
+      },
+      timeout: 15000,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
+    })
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[admin] Failed to test printer:', error.message)
+    const errorMessage = error.response?.data?.error || error.message || '测试失败'
+    res.status(500).json({ success: false, error: errorMessage })
+  }
+})
+
+/**
+ * GET /api/shops/:shopId/deploy
+ * Returns a curl command for auto deployment script
+ */
+app.get('/api/shops/:shopId/deploy', async (req, res) => {
+  const targetId = String(req.params.shopId || '').trim()
+  if (!targetId) {
+    return res.status(400).json({ success: false, error: 'shopId 无效' })
+  }
+
+  try {
+    const data = await loadData()
+    const shop = data.shops.find((item) => item.shopId === targetId)
+    if (!shop) {
+      return res.status(404).json({ success: false, error: '分店不存在' })
+    }
+
+    const baseUrl = resolvePublicBaseUrl(req)
+    const deployUrl = `${baseUrl}/api/deploy-script?shopId=${encodeURIComponent(targetId)}`
+
+    const macDeployUrl = `${deployUrl}&platform=mac`
+
+    res.json({
+      success: true,
+      shopId: shop.shopId,
+      curlCommand: `curl -s ${deployUrl} | bash`,
+      linuxCommand: `curl -s ${deployUrl} | bash`,
+      macCommand: `curl -s ${macDeployUrl} | bash`,
+      commands: {
+        default: `curl -s ${deployUrl} | bash`,
+        mac: `curl -s ${macDeployUrl} | bash`
+      }
+    })
+  } catch (error) {
+    console.error('[admin] Failed to build deploy command:', error)
+    res.status(500).json({ success: false, error: '生成部署脚本失败' })
+  }
+})
+
+/**
+ * GET /api/deploy-script
+ * Returns a shell script customised for the given shop
+ */
+app.get('/api/deploy-script', async (req, res) => {
+  const shopId = String(req.query.shopId || '').trim()
+  if (!shopId) {
+    return res.status(400).send('# 错误：缺少 shopId 参数\nexit 1\n')
+  }
+
+  const data = await loadData()
+  const shop = data.shops.find((item) => item.shopId === shopId)
+  if (!shop) {
+    return res.status(404).send(`# 错误：未找到分店 ${shopId}\nexit 1\n`)
+  }
+
+  const wsUrl =
+    shop.agentBaseUrl && shop.agentBaseUrl.startsWith('http')
+      ? shop.agentBaseUrl.replace('https://', 'wss://').replace('http://', 'ws://') + '/print-agent'
+      : DEFAULT_WS_URL
+
+  const platform = String(req.query.platform || 'wsl').toLowerCase()
+  const script = buildDeploymentScript(shopId, wsUrl, platform)
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  res.send(script)
+})
+
+/**
+ * GET /api/shops/company-map
+ * Returns mapping for manager_next environment generation
+ */
+app.get('/api/shops/company-map', async (req, res) => {
+  try {
+    const data = await loadData()
+    const map = {}
+
+    data.shops.forEach((shop) => {
+      if (!shop.managerCompanyId) return
+      const key = String(shop.managerCompanyId).trim()
+      if (!key) return
+
+      map[key] = {
+        shopId: shop.shopId,
+        agentBaseUrl: shop.agentBaseUrl || undefined,
+        backupAgentBaseUrls:
+          Array.isArray(shop.backupAgentBaseUrls) && shop.backupAgentBaseUrls.length > 0
+            ? shop.backupAgentBaseUrls
+            : undefined,
+        allowSelfSigned: shop.allowSelfSigned || undefined
+      }
+    })
+
+    res.json({ success: true, map })
+  } catch (error) {
+    console.error('[admin] Failed to build company map:', error)
+    res.status(500).json({ success: false, error: '生成映射失败' })
+  }
+})
+
+/**
+ * Fallback for SPA history mode
+ */
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'))
 })
 
-// ============================================
-// 启动服务器
-// ============================================
-
 app.listen(PORT, () => {
-  console.log('')
   console.log('════════════════════════════════════════════════════════════')
-  console.log('🚀 打印代理管理后台已启动')
+  console.log('🚀 Print Agent Admin server started')
   console.log('════════════════════════════════════════════════════════════')
-  console.log(`   端口: ${PORT}`)
-  console.log(`   访问: http://localhost:${PORT}`)
-  console.log(`   生产环境: https://pa.easyify.uk`)
-  console.log(`   打印服务器: ${PRINT_SERVER_URL}`)
-  console.log('════════════════════════════════════════════════════════════\n')
+  console.log(`   Port            : http://localhost:${PORT}`)
+  console.log(`   Print Agent API : ${PRINT_SERVER_URL}`)
+  console.log(`   WS Default URL  : ${DEFAULT_WS_URL}`)
+  if (PUBLIC_BASE_URL) {
+    console.log(`   Public Base URL : ${PUBLIC_BASE_URL}`)
+  }
+  console.log('════════════════════════════════════════════════════════════')
 })
+
 

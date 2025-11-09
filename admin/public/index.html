@@ -438,6 +438,13 @@ ID服务器: 90.195.120.165:21116
                     <label>分店名称</label>
                     <input type="text" id="shopName" placeholder="例如: 测试分店">
                 </div>
+                <div class="form-group">
+                    <label>关联公司 ID（可选）</label>
+                    <input type="text" id="managerCompanyId" placeholder="例如: 27">
+                    <p style="margin-top: 6px; font-size: 12px; color: #6b7280;">
+                        与 manager_next 的 companyId 对应，方便自动生成 NEXT_PUBLIC_PRINT_AGENT_MAP。
+                    </p>
+                </div>
                 <div style="text-align: right; margin-top: 20px;">
                     <button type="button" class="btn" onclick="closeModal()">取消</button>
                     <button type="submit" class="btn btn-success">保存</button>
@@ -450,7 +457,7 @@ ID服务器: 90.195.120.165:21116
     <div class="modal" id="printerModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>添加打印机</h3>
+                <h3 id="printerModalTitle">添加打印机</h3>
                 <button class="close-btn" onclick="closePrinterModal()">&times;</button>
             </div>
             <form id="printerForm">
@@ -469,14 +476,16 @@ ID服务器: 90.195.120.165:21116
                 <div class="form-group">
                     <label>类型</label>
                     <select id="printerType">
-                        <option value="kitchen">厨房</option>
-                        <option value="front">前台</option>
-                        <option value="other">其他</option>
+                        <option value="Kitchen">Kitchen</option>
+                        <option value="FrontDesk">FrontDesk</option>
+                        <option value="Bar">Bar</option>
+                        <option value="Receipt">Receipt</option>
+                        <option value="Label">Label</option>
                     </select>
                 </div>
                 <div style="text-align: right; margin-top: 20px;">
                     <button type="button" class="btn" onclick="closePrinterModal()">取消</button>
-                    <button type="submit" class="btn btn-success">添加</button>
+                    <button type="submit" class="btn btn-success" id="printerSubmitBtn">添加</button>
                 </div>
             </form>
         </div>
@@ -490,13 +499,31 @@ ID服务器: 90.195.120.165:21116
                 <button class="close-btn" onclick="closeDeployModal()">&times;</button>
             </div>
             <div>
-                <p style="margin-bottom: 15px; color: #666;">在 Windows WSL 中运行以下命令：</p>
-                <div class="deploy-command">
-                    <button class="copy-btn" onclick="copyDeployCommand(event)">复制</button>
-                    <div id="deployCommand" style="padding-right: 80px;">加载中...</div>
+                <p style="margin-bottom: 15px; color: #666;">选择对应环境运行命令：</p>
+                <div class="space-y-4">
+                    <div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <strong>WSL / Linux</strong>
+                            <span style="font-size:12px;color:#6b7280;">默认部署脚本</span>
+                        </div>
+                        <div class="deploy-command">
+                            <button class="copy-btn" onclick="copyDeployCommand(event, 'wsl')">复制</button>
+                            <div id="deployCommandWsl" style="padding-right: 80px;">加载中...</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <strong>macOS</strong>
+                            <span style="font-size:12px;color:#6b7280;">本地调试或店内 Mac 设备</span>
+                        </div>
+                        <div class="deploy-command">
+                            <button class="copy-btn" onclick="copyDeployCommand(event, 'mac')">复制</button>
+                            <div id="deployCommandMac" style="padding-right: 80px;">加载中...</div>
+                        </div>
+                    </div>
                 </div>
                 <p style="margin-top: 15px; color: #666; font-size: 14px;">
-                    💡 提示：在 WSL 终端中粘贴并运行上述命令即可完成部署
+                    💡 提示：在对应环境的终端中粘贴命令并运行即可完成部署；macOS 脚本会检测 Node.js 并提示使用 Homebrew 安装。
                 </p>
             </div>
         </div>
@@ -505,6 +532,47 @@ ID服务器: 90.195.120.165:21116
     <script>
         let currentShopId = null;
         let shops = [];
+        let isEditingShop = false;
+        let isEditingPrinter = false;
+        let editingPrinterOriginalIp = null;
+
+        const normalizePrinterType = (type) => {
+            if (!type) return 'Kitchen';
+            const cleaned = String(type).trim().toLowerCase();
+            switch (cleaned) {
+                case 'kitchen':
+                    return 'Kitchen';
+                case 'front':
+                case 'frontdesk':
+                    return 'FrontDesk';
+                case 'bar':
+                    return 'Bar';
+                case 'receipt':
+                    return 'Receipt';
+                case 'label':
+                    return 'Label';
+                default:
+                    return 'Kitchen';
+            }
+        };
+
+        const printerTypeLabel = (type) => {
+            const normalized = normalizePrinterType(type);
+            const labelMap = {
+                Kitchen: 'Kitchen',
+                FrontDesk: 'FrontDesk',
+                Bar: 'Bar',
+                Receipt: 'Receipt',
+                Label: 'Label'
+            };
+            return labelMap[normalized] || normalized;
+        };
+
+        function escapeForAttribute(value = '') {
+            return String(value)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'");
+        }
 
         // 加载数据
         async function loadData() {
@@ -540,41 +608,55 @@ ID服务器: 90.195.120.165:21116
                 return;
             }
 
-            list.innerHTML = shops.map(shop => `
+            list.innerHTML = shops.map(shop => {
+                const printers = Array.isArray(shop.printers) ? shop.printers : [];
+                const safeShopId = escapeForAttribute(shop.shopId || '');
+                return `
                 <li class="shop-item">
                     <div class="shop-header">
                         <div>
                             <div class="shop-name">${shop.name || shop.shopId}</div>
                             <div class="shop-id">${shop.shopId}</div>
+                            ${shop.managerCompanyId ? `<div class="shop-id" style="margin-top:4px; background:#eef2ff; color:#3730a3;">公司 ID: ${shop.managerCompanyId}</div>` : ''}
                         </div>
-                        <span class="status-badge ${shop.connected ? 'connected' : 'disconnected'}">
-                            ${shop.connected ? '✓ 已连接' : '✗ 未连接'}
-                        </span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="status-badge ${shop.connected ? 'connected' : 'disconnected'}">
+                                ${shop.connected ? '✓ 已连接' : '✗ 未连接'}
+                            </span>
+                            <button class="btn btn-small" onclick="showEditShopModal('${safeShopId}')">编辑</button>
+                        </div>
                     </div>
                     <div class="printers-list">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <strong>打印机列表 (${shop.printers.length})</strong>
+                            <strong>打印机列表 (${printers.length})</strong>
                             <div>
-                                <button class="btn btn-small" onclick="showAddPrinterModal('${shop.shopId}')">+ 添加</button>
-                                <button class="btn btn-small" onclick="showDeployModal('${shop.shopId}')">部署</button>
+                                <button class="btn btn-small" onclick="showAddPrinterModal('${safeShopId}')">+ 添加</button>
+                                <button class="btn btn-small" onclick="showDeployModal('${safeShopId}')">部署</button>
                             </div>
                         </div>
-                        ${shop.printers.map(printer => `
+                        ${printers.map(printer => {
+                            const safePrinterIp = escapeForAttribute(printer.ip || '');
+                            const printerPort = Number(printer.port) || 9100;
+                            const displayName = printer.name ? printer.name : `${printer.ip}:${printerPort}`;
+                            const displayType = printer.type ? ` (${printerTypeLabel(printer.type)})` : '';
+                            return `
                             <div class="printer-item">
                                 <div class="printer-info">
-                                    <div class="printer-ip">${printer.ip}:${printer.port}</div>
-                                    <div class="printer-name">${printer.name} (${printer.type})</div>
+                                    <div class="printer-ip">${printer.ip}:${printerPort}</div>
+                                    <div class="printer-name">${displayName}${displayType}</div>
                                 </div>
                                 <div class="printer-actions">
-                                    <button class="btn btn-small" onclick="testPrinter('${shop.shopId}', '${printer.ip}', ${printer.port})">测试</button>
-                                    <button class="btn btn-small btn-danger" onclick="deletePrinter('${shop.shopId}', '${printer.ip}')">删除</button>
+                                    <button class="btn btn-small" onclick="testPrinter(event, '${safeShopId}', '${safePrinterIp}', ${printerPort})">测试</button>
+                                    <button class="btn btn-small" onclick="showEditPrinterModal('${safeShopId}', '${safePrinterIp}')">编辑</button>
+                                    <button class="btn btn-small btn-danger" onclick="deletePrinter('${safeShopId}', '${safePrinterIp}')">删除</button>
                                 </div>
                             </div>
-                        `).join('')}
-                        ${shop.printers.length === 0 ? '<div style="text-align: center; color: #999; padding: 10px;">暂无打印机</div>' : ''}
+                        `;
+                        }).join('')}
+                        ${printers.length === 0 ? '<div style="text-align: center; color: #999; padding: 10px;">暂无打印机</div>' : ''}
                     </div>
                 </li>
-            `).join('');
+            `}).join('');
         }
 
         function renderAgents(agents) {
@@ -603,70 +685,204 @@ ID服务器: 90.195.120.165:21116
             document.getElementById('modalTitle').textContent = '添加分店';
             document.getElementById('shopForm').reset();
             document.getElementById('shopId').disabled = false;
+            const companyInput = document.getElementById('managerCompanyId');
+            if (companyInput) {
+                companyInput.value = '';
+            }
             currentShopId = null;
+            isEditingShop = false;
+            document.getElementById('shopModal').classList.add('active');
+        }
+
+        function showEditShopModal(shopId) {
+            const shop = shops.find(item => item.shopId === shopId);
+            if (!shop) {
+                showToast('分店不存在', 'error');
+                return;
+            }
+
+            currentShopId = shopId;
+            isEditingShop = true;
+            document.getElementById('modalTitle').textContent = '编辑分店';
+            document.getElementById('shopForm').reset();
+            const idInput = document.getElementById('shopId');
+            idInput.value = shop.shopId;
+            idInput.disabled = true;
+            document.getElementById('shopName').value = shop.name || '';
+            const companyInput = document.getElementById('managerCompanyId');
+            if (companyInput) {
+                companyInput.value = shop.managerCompanyId || '';
+            }
             document.getElementById('shopModal').classList.add('active');
         }
 
         document.getElementById('shopForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const shopId = document.getElementById('shopId').value;
-            const shopName = document.getElementById('shopName').value;
+            const shopIdInput = document.getElementById('shopId').value.trim();
+            const shopName = document.getElementById('shopName').value.trim();
+            const managerCompanyId = document.getElementById('managerCompanyId').value.trim();
+
+            if (!shopIdInput && !isEditingShop) {
+                showToast('分店ID不能为空', 'error');
+                return;
+            }
 
             try {
-                const url = currentShopId ? `/api/shops/${currentShopId}` : '/api/shops';
-                const method = currentShopId ? 'PUT' : 'POST';
-                
+                const targetShopId = isEditingShop ? currentShopId : shopIdInput;
+
+                if (!targetShopId) {
+                    showToast('分店ID不能为空', 'error');
+                    return;
+                }
+
+                const url = isEditingShop ? `/api/shops/${targetShopId}` : '/api/shops';
+                const method = isEditingShop ? 'PUT' : 'POST';
+                const payload = isEditingShop
+                    ? { name: shopName, managerCompanyId }
+                    : { shopId: shopIdInput, name: shopName, managerCompanyId };
+
                 const response = await fetch(url, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ shopId, name: shopName })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
                 if (data.success) {
-                    showToast('保存成功');
+                    showToast(isEditingShop ? '分店更新成功' : '分店添加成功');
                     closeModal();
                     loadData();
                 } else {
-                    showToast('保存失败: ' + data.error, 'error');
+                    showToast((isEditingShop ? '更新失败: ' : '添加失败: ') + data.error, 'error');
                 }
             } catch (error) {
-                showToast('保存失败: ' + error.message, 'error');
+                showToast((isEditingShop ? '更新失败: ' : '添加失败: ') + error.message, 'error');
             }
         });
 
         // 添加打印机
         function showAddPrinterModal(shopId) {
             currentShopId = shopId;
+            isEditingPrinter = false;
+            editingPrinterOriginalIp = null;
             document.getElementById('printerForm').reset();
             document.getElementById('printerPort').value = '9100';
+            document.getElementById('printerModalTitle').textContent = '添加打印机';
+            document.getElementById('printerSubmitBtn').textContent = '添加';
+            document.getElementById('printerModal').classList.add('active');
+        }
+
+        function showEditPrinterModal(shopId, ip) {
+            const shop = shops.find(item => item.shopId === shopId);
+            if (!shop) {
+                showToast('分店不存在', 'error');
+                return;
+            }
+
+            const printers = Array.isArray(shop.printers) ? shop.printers : [];
+            const printer = printers.find(item => item.ip === ip);
+            if (!printer) {
+                showToast('打印机不存在', 'error');
+                return;
+            }
+
+            currentShopId = shopId;
+            isEditingPrinter = true;
+            editingPrinterOriginalIp = ip;
+
+            document.getElementById('printerModalTitle').textContent = '编辑打印机';
+            document.getElementById('printerSubmitBtn').textContent = '保存';
+            document.getElementById('printerForm').reset();
+            document.getElementById('printerIp').value = printer.ip || '';
+            document.getElementById('printerPort').value = printer.port || '9100';
+            document.getElementById('printerName').value = printer.name || '';
+            const typeSelect = document.getElementById('printerType');
+            const targetType = normalizePrinterType(printer.type);
+            if (Array.from(typeSelect.options).some(option => option.value === targetType)) {
+                typeSelect.value = targetType;
+            } else {
+                typeSelect.value = 'Kitchen';
+            }
+
             document.getElementById('printerModal').classList.add('active');
         }
 
         document.getElementById('printerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const ip = document.getElementById('printerIp').value;
-            const port = parseInt(document.getElementById('printerPort').value);
-            const name = document.getElementById('printerName').value;
-            const type = document.getElementById('printerType').value;
+            const ip = document.getElementById('printerIp').value.trim();
+            const portValue = parseInt(document.getElementById('printerPort').value, 10);
+            const port = Number.isFinite(portValue) ? portValue : 9100;
+            const name = document.getElementById('printerName').value.trim();
+            const type = normalizePrinterType(document.getElementById('printerType').value);
 
             try {
-                const response = await fetch(`/api/shops/${currentShopId}/printers`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ip, port, name, type })
-                });
+                if (!currentShopId) {
+                    showToast('请选择分店', 'error');
+                    return;
+                }
 
-                const data = await response.json();
-                if (data.success) {
-                    showToast('打印机添加成功');
-                    closePrinterModal();
-                    loadData();
+                if (!ip) {
+                    showToast('IP 地址不能为空', 'error');
+                    return;
+                }
+
+                if (isEditingPrinter) {
+                    const shop = shops.find(item => item.shopId === currentShopId);
+                    if (!shop) {
+                        showToast('分店不存在', 'error');
+                        return;
+                    }
+
+                    const printers = Array.isArray(shop.printers) ? [...shop.printers] : [];
+                    const printerIndex = printers.findIndex(item => item.ip === editingPrinterOriginalIp);
+
+                    if (printerIndex === -1) {
+                        showToast('打印机不存在', 'error');
+                        return;
+                    }
+
+                    const updatedPrinter = {
+                        ...printers[printerIndex],
+                        ip,
+                        port,
+                        name: name || `${ip}:${port}`,
+                        type
+                    };
+
+                    printers[printerIndex] = updatedPrinter;
+
+                    const response = await fetch(`/api/shops/${currentShopId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ printers })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('打印机更新成功');
+                        closePrinterModal();
+                        loadData();
+                    } else {
+                        showToast('更新失败: ' + data.error, 'error');
+                    }
                 } else {
-                    showToast('添加失败: ' + data.error, 'error');
+                    const response = await fetch(`/api/shops/${currentShopId}/printers`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ip, port, name, type })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('打印机添加成功');
+                        closePrinterModal();
+                        loadData();
+                    } else {
+                        showToast('添加失败: ' + data.error, 'error');
+                    }
                 }
             } catch (error) {
-                showToast('添加失败: ' + error.message, 'error');
+                showToast('操作失败: ' + error.message, 'error');
             }
         });
 
@@ -692,8 +908,12 @@ ID服务器: 90.195.120.165:21116
         }
 
         // 测试打印机
-        async function testPrinter(shopId, ip, port) {
-            const btn = event.target;
+        async function testPrinter(evt, shopId, ip, port) {
+            const btn = evt?.target;
+            if (!btn) {
+                return;
+            }
+
             const originalText = btn.textContent;
             btn.disabled = true;
             btn.innerHTML = '<span class="loading"></span> 测试中...';
@@ -722,62 +942,86 @@ ID服务器: 90.195.120.165:21116
         // 显示部署脚本
         async function showDeployModal(shopId) {
             document.getElementById('deployModal').classList.add('active');
-            const commandEl = document.getElementById('deployCommand');
-            commandEl.textContent = '加载中...';
+            const wslEl = document.getElementById('deployCommandWsl');
+            const macEl = document.getElementById('deployCommandMac');
+            wslEl.textContent = '加载中...';
+            macEl.textContent = '加载中...';
+            delete wslEl.dataset.command;
+            delete macEl.dataset.command;
 
             try {
                 const response = await fetch(`/api/shops/${shopId}/deploy`);
                 const data = await response.json();
                 if (data.success) {
-                    // 显示 curl 命令
-                    commandEl.textContent = data.curlCommand;
-                    // 保存完整命令用于复制
-                    commandEl.dataset.command = data.curlCommand;
+                    const wslCommand = data.linuxCommand || data.curlCommand || data.commands?.default;
+                    const macCommand = data.macCommand || data.commands?.mac;
+
+                    if (wslCommand) {
+                        wslEl.textContent = wslCommand;
+                        wslEl.dataset.command = wslCommand;
+                    } else {
+                        wslEl.textContent = '未提供部署命令';
+                    }
+
+                    if (macCommand) {
+                        macEl.textContent = macCommand;
+                        macEl.dataset.command = macCommand;
+                    } else {
+                        macEl.textContent = '暂未提供 macOS 部署命令';
+                    }
                 } else {
-                    commandEl.textContent = '加载失败: ' + data.error;
+                    const msg = '加载失败: ' + data.error;
+                    wslEl.textContent = msg;
+                    macEl.textContent = msg;
                 }
             } catch (error) {
-                commandEl.textContent = '加载失败: ' + error.message;
+                const msg = '加载失败: ' + error.message;
+                wslEl.textContent = msg;
+                macEl.textContent = msg;
             }
         }
 
-        function copyDeployCommand(event) {
-            const commandEl = document.getElementById('deployCommand');
+        function copyDeployCommand(event, variant = 'wsl') {
+            const targetId = variant === 'mac' ? 'deployCommandMac' : 'deployCommandWsl';
+            const commandEl = document.getElementById(targetId);
+            if (!commandEl) {
+                showToast('复制失败，未找到命令区域', 'error');
+                return;
+            }
+
             const command = commandEl.dataset.command || commandEl.textContent.trim();
-            
-            // 如果命令还在加载中，不执行复制
-            if (command === '加载中...' || !command) {
+            if (command === '加载中...' || !command || command.startsWith('加载失败')) {
                 showToast('命令尚未加载完成', 'error');
                 return;
             }
-            
-            // 使用 Clipboard API 或 fallback 方法
+
+            const btn = event ? event.target : document.querySelector('#deployModal .copy-btn');
+
+            const handleSuccess = () => {
+                if (btn) {
+                    const originalText = btn.textContent;
+                    btn.textContent = '已复制!';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.classList.remove('copied');
+                    }, 2000);
+                }
+                showToast('命令已复制到剪贴板');
+            };
+
             if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(command).then(() => {
-                    const btn = event ? event.target : document.querySelector('#deployModal .copy-btn');
-                    if (btn) {
-                        const originalText = btn.textContent;
-                        btn.textContent = '已复制!';
-                        btn.classList.add('copied');
-                        setTimeout(() => {
-                            btn.textContent = originalText;
-                            btn.classList.remove('copied');
-                        }, 2000);
-                    }
-                    showToast('命令已复制到剪贴板');
-                }).catch(err => {
+                navigator.clipboard.writeText(command).then(handleSuccess).catch(err => {
                     console.error('复制失败:', err);
-                    // Fallback: 使用 select 方法
-                    fallbackCopy(command);
+                    fallbackCopy(command, btn);
                 });
             } else {
-                // Fallback: 使用 select 方法
-                fallbackCopy(command);
+                fallbackCopy(command, btn);
             }
         }
         
         // Fallback 复制方法
-        function fallbackCopy(text) {
+        function fallbackCopy(text, context) {
             const textArea = document.createElement('textarea');
             textArea.value = text;
             textArea.style.position = 'fixed';
@@ -789,25 +1033,54 @@ ID服务器: 90.195.120.165:21116
             
             try {
                 const successful = document.execCommand('copy');
-                if (successful) {
-                    showToast('命令已复制到剪贴板');
-                } else {
+                if (!successful) {
                     showToast('复制失败，请手动选择文本复制', 'error');
+                    return;
                 }
             } catch (err) {
                 console.error('复制失败:', err);
                 showToast('复制失败，请手动选择文本复制', 'error');
+                return;
             } finally {
                 document.body.removeChild(textArea);
             }
+
+            if (typeof context === 'function') {
+                context();
+                return;
+            }
+
+            if (context) {
+                const originalText = context.textContent;
+                context.textContent = '已复制!';
+                context.classList.add('copied');
+                setTimeout(() => {
+                    context.textContent = originalText;
+                    context.classList.remove('copied');
+                }, 2000);
+            }
+            showToast('命令已复制到剪贴板');
         }
 
         function closeModal() {
             document.getElementById('shopModal').classList.remove('active');
+            document.getElementById('shopForm').reset();
+            const idInput = document.getElementById('shopId');
+            idInput.disabled = false;
+            document.getElementById('modalTitle').textContent = '添加分店';
+            currentShopId = null;
+            isEditingShop = false;
         }
 
         function closePrinterModal() {
             document.getElementById('printerModal').classList.remove('active');
+            document.getElementById('printerForm').reset();
+            document.getElementById('printerPort').value = '9100';
+            currentShopId = null;
+            isEditingPrinter = false;
+            editingPrinterOriginalIp = null;
+            document.getElementById('printerModalTitle').textContent = '添加打印机';
+            document.getElementById('printerSubmitBtn').textContent = '添加';
         }
 
         function closeDeployModal() {
@@ -887,4 +1160,5 @@ ID服务器: 90.195.120.165:21116
     </script>
 </body>
 </html>
+
 

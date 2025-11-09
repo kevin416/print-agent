@@ -75,6 +75,9 @@ const response = await fetch('https://printer1.easyify.uk/api/print?host=192.168
 # 部署服务器端（SSH）
 ./deploy-to-server.sh          # PM2 / Docker 一键部署
 
+# 配置 Nginx + HTTPS 到 printer-hub.easyify.uk
+./setup-printer-hub-domain.sh printer-hub.easyify.uk ops@easyify.uk
+
 # 管理后台
 cd admin && ./deploy-admin.sh
 
@@ -87,4 +90,3 @@ curl http://127.0.0.1:3000/api/print/health | jq .
 ```
 
 更多调试方法请参考 [docs/troubleshooting.md](docs/troubleshooting.md)。
-# print-agent

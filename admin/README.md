@@ -4,10 +4,11 @@
 
 ## 功能
 
-- ✅ **分店管理**：添加/编辑/删除分店
+- ✅ **分店管理**：添加/编辑/删除分店，支持记录 manager_next 的公司 ID 映射
 - ✅ **打印机管理**：为每个分店管理打印机列表
 - ✅ **连接测试**：一键测试打印机连接
 - ✅ **一键部署**：生成 WSL 一键部署脚本，支持复制 curl 命令
+- ✅ **环境映射导出**：\`GET /api/shops/company-map\` 一键导出 \`NEXT_PUBLIC_PRINT_AGENT_MAP\`
 
 ## 快速开始
 
@@ -41,7 +42,8 @@ npm start
 1. 点击"添加分店"按钮
 2. 输入分店ID（如：shop1, bbq）
 3. 输入分店名称（可选）
-4. 保存
+4. 录入关联公司 ID（可选，与 manager_next 的 \`companyId\` 对应，用于自动生成 \`.env\` 映射）
+5. 保存
 
 ### 添加打印机
 
@@ -61,22 +63,38 @@ npm start
 ### 一键部署
 
 1. 在分店列表中，点击"部署"按钮
-2. 复制显示的 curl 命令
-3. 在 Windows WSL 中粘贴并运行
+2. 复制对应环境的 curl 命令（WSL/Linux 或 macOS）
+3. 在目标终端中粘贴并运行；macOS 脚本会提示使用 Homebrew 安装 Node.js（如未安装）
+4. 注意命令两侧保留双引号，确保 `&platform=mac` 不被 shell 解析拆分
+
+### 导出 manager_next 环境变量
+
+1. 在列表里为每个分店填写“关联公司 ID”（manager_next 的 `companyId`）
+2. 打开终端，执行：
+   ```bash
+   curl -s https://pa.easyify.uk/api/shops/company-map | jq -c '.map'
+   ```
+3. 将输出结果整体复制，粘贴到 manager_next `.env` 中，例如：
+   ```env
+   NEXT_PUBLIC_PRINT_AGENT_MAP='{"15":{"shopId":"testclient"},"27":{"shopId":"bbq"}}'
+   ```
+4. 保存后重新启动/部署 manager_next，新的映射即可生效
+
+> 提示：如果没有安装 `jq`，可以改用 `curl -s ... | python -m json.tool` 或直接访问浏览器复制。
 
 ## API 接口
 
-- \`GET /api/shops\` - 获取所有分店
+- \`GET /api/shops\` - 获取所有分店（含连接状态）
 - \`POST /api/shops\` - 创建分店
-- \`GET /api/shops/:shopId\` - 获取单个分店
-- \`PUT /api/shops/:shopId\` - 更新分店
+- \`PUT /api/shops/:shopId\` - 更新分店信息、公司 ID 或打印机列表
 - \`DELETE /api/shops/:shopId\` - 删除分店
-- \`POST /api/shops/:shopId/printers\` - 添加打印机
+- \`POST /api/shops/:shopId/printers\` - 添加/更新打印机
 - \`DELETE /api/shops/:shopId/printers/:ip\` - 删除打印机
-- \`POST /api/shops/:shopId/printers/:ip/test\` - 测试打印机
-- \`GET /api/shops/:shopId/deploy\` - 生成部署脚本
-- \`GET /api/agents\` - 获取已连接的代理列表
-- \`GET /api/download/agent\` - 下载 local-print-agent.js 文件
+- \`POST /api/shops/:shopId/printers/:ip/test\` - 发送测试打印
+- \`GET /api/shops/:shopId/deploy\` - 返回部署脚本 curl 命令
+- \`GET /api/deploy-script?shopId=...\` - 输出针对分店的部署脚本
+- \`GET /api/shops/company-map\` - 导出 \`companyId → shopId\` 映射
+- \`GET /api/agents\` - 获取已连接的本地代理列表
 
 ## 数据存储
 
