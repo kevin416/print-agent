@@ -131,12 +131,12 @@ Write-Host ""
 
 # 询问是否继续
 $continue = Read-Host "是否开始打包？(y/n)"
-if ($continue -ne "y" -and $continue -ne "Y") {
+if (($continue -ne "y") -and ($continue -ne "Y")) {
     Write-Host "已取消"
     # 如果版本号已更新，可以选择是否回滚
     if ($NEW_VERSION -ne $CURRENT_VERSION) {
         $rollback = Read-Host "是否回滚版本号到 v$CURRENT_VERSION？(y/n)"
-        if ($rollback -eq "y" -or $rollback -eq "Y") {
+        if (($rollback -eq "y") -or ($rollback -eq "Y")) {
             $packageJson.version = $CURRENT_VERSION
             $packageJson | ConvertTo-Json -Depth 10 | Set-Content "package.json" -Encoding UTF8
             Write-Host "✅ 版本号已回滚到 v$CURRENT_VERSION"
@@ -316,7 +316,7 @@ Write-Host ""
 
 # 询问是否上传
 $upload = Read-Host "是否上传到服务器？(y/n)"
-if ($upload -ne "y" -and $upload -ne "Y") {
+if (($upload -ne "y") -and ($upload -ne "Y")) {
     Write-Host ""
     Write-Host "✅ 构建产物已整理完成，但未上传到服务器"
     Write-Host "   文件位置: $(Get-Location)\updates\local-usb-agent\"
@@ -346,7 +346,7 @@ Write-Host "  3. 手动上传 updates/ 目录到服务器"
 Write-Host ""
 
 $useBash = Read-Host "是否尝试使用 Git Bash 运行部署脚本？(y/n)"
-if ($useBash -eq "y" -or $useBash -eq "Y") {
+if (($useBash -eq "y") -or ($useBash -eq "Y")) {
     Set-Location admin
     bash deploy-admin.sh
 } else {
