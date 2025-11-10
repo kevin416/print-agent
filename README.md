@@ -130,30 +130,35 @@ curl http://127.0.0.1:3000/api/print/health | jq .
 
 **Windows:**
 ```batch
-# 方式 1：使用批处理文件（推荐，自动处理编码）
+# 方式 1：使用批处理文件（推荐，无需额外安装）
 deploy-client.bat
 # 或
 deploy-client.cmd
 
-# 方式 2：使用 Git Bash（如果已安装 Git）
+# 方式 2：使用 Git Bash（需要先安装 Git for Windows）
+# 安装 Git: https://git-scm.com/download/win
+# 安装后，在 Git Bash 中运行：
 bash deploy-client.sh
 
-# 方式 3：使用 WSL（如果已安装 WSL）
+# 方式 3：使用 WSL（需要先安装 WSL）
+# 安装 WSL: wsl --install
+# 安装后，在 PowerShell 或 CMD 中运行：
 wsl bash deploy-client.sh
 
-# 方式 4：使用 PowerShell Core 7+（如果已安装）
+# 方式 4：使用 PowerShell Core 7+（需要先安装）
+# 安装: https://aka.ms/powershell-release?tag=stable
+# 安装后运行：
 pwsh deploy-client.ps1
 
 # 方式 5：直接运行 PowerShell 脚本（可能遇到编码问题）
 .\deploy-client.ps1
 ```
 
-> **Windows 编码问题**：如果 PowerShell 脚本出现中文乱码或解析错误，请：
-> - **优先使用** `deploy-client.bat` 或 `deploy-client.cmd`（自动处理编码）
-> - 使用 **Git Bash** 运行 `bash deploy-client.sh`
-> - 使用 **WSL** 运行 `wsl bash deploy-client.sh`
-> - 使用 **PowerShell Core 7+**（`pwsh`）代替 Windows PowerShell
-> - 在 Windows Terminal 中运行（通常编码处理更好）
+> **Windows 使用说明**：
+> - **最简单方式**：直接双击 `deploy-client.bat` 或 `deploy-client.cmd`（无需安装任何工具）
+> - **Git Bash**：如果已安装 Git for Windows，可以在 Git Bash 终端中运行 `bash deploy-client.sh`
+> - **WSL**：如果已安装 WSL，可以在 PowerShell/CMD 中运行 `wsl bash deploy-client.sh`
+> - **编码问题**：如果 PowerShell 脚本出现中文乱码，优先使用批处理文件或 Git Bash
 
 #### 手动打包
 
