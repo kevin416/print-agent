@@ -29,6 +29,8 @@ win:
   target:
     - nsis
   icon: src/assets/icon.ico
+  # 指定可执行文件名（用于检测运行中的应用）
+  executableName: "Yepos Agent"
 linux:
   target:
     - AppImage
