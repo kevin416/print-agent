@@ -18,6 +18,10 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# 获取项目根目录（admin 的父目录）
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+UPDATES_DIR="$PROJECT_ROOT/updates"
+
 # 配置 SSH agent 以避免重复输入密码
 echo "🔐 配置 SSH agent..."
 if [ -z "$SSH_AUTH_SOCK" ]; then
@@ -42,8 +46,17 @@ scp $SSH_OPTS ecosystem.config.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp $SSH_OPTS nginx.conf $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp $SSH_OPTS -r public $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 
+# 同步客户端安装包
 echo "📦 同步客户端安装包..."
-rsync $SSH_OPTS -av --delete ../updates/ $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
+if [ ! -d "$UPDATES_DIR" ]; then
+    echo "⚠️  警告：未找到 updates 目录: $UPDATES_DIR"
+    echo "   跳过客户端安装包上传"
+else
+    echo "   源目录: $UPDATES_DIR"
+    echo "   目标: $SERVER_USER@$SERVER_HOST:~/print-agent/updates/"
+    rsync $SSH_OPTS -av --delete "$UPDATES_DIR/" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
+    echo "✅ 客户端安装包同步完成"
+fi
 
 # 部署
 echo ""

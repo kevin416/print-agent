@@ -355,8 +355,31 @@ if [ ! -f "admin/deploy-admin.sh" ]; then
     exit 1
 fi
 
-# 上传到服务器
+# 验证 updates 目录是否存在
+if [ ! -d "updates/local-usb-agent" ]; then
+    echo "⚠️  警告：未找到 updates/local-usb-agent 目录"
+    echo "   请确保构建产物已正确整理"
+    read -p "是否继续上传？（可能不会上传客户端安装包）(y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 0
+    fi
+fi
+
+# 显示要上传的文件
 echo ""
+echo "📋 准备上传的文件："
+echo "────────────────────────────────────────────────────────────"
+if [ -d "updates/local-usb-agent" ]; then
+    echo "客户端安装包："
+    find updates/local-usb-agent -type f -name "*.exe" -o -name "*.dmg" -o -name "*.zip" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.yml" 2>/dev/null | while read file; do
+        size=$(ls -lh "$file" 2>/dev/null | awk '{print $5}')
+        echo "  - $file ($size)"
+    done
+fi
+echo ""
+
+# 上传到服务器
 echo "🚀 上传到服务器..."
 echo "────────────────────────────────────────────────────────────"
 
