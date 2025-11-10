@@ -881,15 +881,10 @@ ID服务器: 90.195.120.165:21116
                 const downloads = data.downloads;
                 const links = [];
                 
-                // Windows 下载链接
-                if (downloads.win.exe || downloads.win.zip) {
+                // Windows 下载链接（只显示便携版）
+                if (downloads.win.zip) {
                     const version = downloads.win.version ? ` v${downloads.win.version}` : '';
-                    if (downloads.win.exe) {
-                        links.push(`<a class="btn btn-small" href="${downloads.win.exe}" target="_blank" rel="noopener" download>🪟 Windows 安装包 (.exe)${version}</a>`);
-                    }
-                    if (downloads.win.zip) {
-                        links.push(`<a class="btn btn-small" href="${downloads.win.zip}" target="_blank" rel="noopener" download>🪟 Windows 免安装 (.zip)${version}</a>`);
-                    }
+                    links.push(`<a class="btn btn-small" href="${downloads.win.zip}" target="_blank" rel="noopener" download>🪟 Windows 便携版 (.zip)${version}</a>`);
                 }
                 
                 // macOS 下载链接

@@ -1133,17 +1133,8 @@ app.get('/api/client-downloads', async (req, res) => {
       winFilesWithStats.sort((a, b) => b.mtime - a.mtime)
       
       for (const { file } of winFilesWithStats) {
-        if (file.endsWith('.exe') && (file.includes('Setup') || file.includes('setup'))) {
-          if (!downloads.win.exe) {
-            downloads.win.exe = `/updates/local-usb-agent/win/${file}`
-            // Extract version from filename (e.g., "Yepos Agent Setup 0.2.5.exe" or "Yepos Agent Setup-0.2.2.exe")
-            // Support both space and dash separators
-            const versionMatch = file.match(/(?:[\s-])(\d+\.\d+\.\d+)\.exe$/i)
-            if (versionMatch && !downloads.win.version) {
-              downloads.win.version = versionMatch[1]
-            }
-          }
-        } else if (file.endsWith('.zip') && (file.includes('win') || file.includes('win64'))) {
+        // 只处理 ZIP 文件（便携版），不处理 EXE 文件（安装版）
+        if (file.endsWith('.zip') && (file.includes('win') || file.includes('win64'))) {
           if (!downloads.win.zip) {
             downloads.win.zip = `/updates/local-usb-agent/win/${file}`
             if (!downloads.win.version) {

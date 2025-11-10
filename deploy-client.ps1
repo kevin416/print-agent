@@ -158,7 +158,7 @@ if ($PLATFORM -like "*Windows*") {
     Write-Host "检测到 Windows 平台"
     Write-Host ""
     Write-Host "可用的打包选项："
-    Write-Host "  1) Windows x64 (NSIS 安装程序 + ZIP)"
+    Write-Host "  1) Windows x64 (便携版 ZIP，仅上传便携版)"
     Write-Host "  2) Linux (AppImage + DEB)"
     Write-Host "  3) Windows + Linux"
     Write-Host ""
@@ -207,22 +207,23 @@ $null = New-Item -ItemType Directory -Force -Path "updates\local-usb-agent\win"
 $null = New-Item -ItemType Directory -Force -Path "updates\local-usb-agent\linux"
 $null = New-Item -ItemType Directory -Force -Path "updates\local-usb-agent\stable"
 
-# 复制 Windows 构建产物
-Write-Host "复制 Windows 构建产物..."
+# 复制 Windows 构建产物（只复制便携版 ZIP，不复制安装版 EXE）
+Write-Host "复制 Windows 构建产物（便携版）..."
 $buildDir = "local-usb-agent-app\build"
 if (Test-Path $buildDir) {
-    $winFiles = Get-ChildItem "$buildDir\*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "Setup" }
-    if ($winFiles) {
-        foreach ($file in $winFiles) {
-            Copy-Item $file.FullName -Destination "updates\local-usb-agent\win\" -Force
-            Write-Host "  ✓ EXE 文件已复制: $($file.Name)"
-        }
-    }
+    # 只复制 ZIP 文件，不复制 EXE 文件
     $winZipFiles = Get-ChildItem "$buildDir\*-win*.zip" -ErrorAction SilentlyContinue
     if ($winZipFiles) {
-        foreach ($file in $winZipFiles) {
-            Copy-Item $file.FullName -Destination "updates\local-usb-agent\win\" -Force
-            Write-Host "  ✓ ZIP 文件已复制: $($file.Name)"
+        # 只复制最新的 ZIP 文件（按修改时间排序）
+        $latestZip = $winZipFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($latestZip) {
+            Copy-Item $latestZip.FullName -Destination "updates\local-usb-agent\win\" -Force
+            Write-Host "  ✓ ZIP 文件已复制: $($latestZip.Name)"
+            # 复制对应的 blockmap 文件
+            $blockmapFile = "$($latestZip.FullName).blockmap"
+            if (Test-Path $blockmapFile) {
+                Copy-Item $blockmapFile -Destination "updates\local-usb-agent\win\" -Force
+            }
         }
     }
     $latestYml = Get-Item "$buildDir\latest.yml" -ErrorAction SilentlyContinue

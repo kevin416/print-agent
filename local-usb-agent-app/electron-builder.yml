@@ -55,8 +55,6 @@ nsis:
   perMachine: true
   # 允许请求提升权限
   allowElevation: true
-  # 在安装新版本之前自动卸载旧版本（这会自动关闭运行中的应用）
-  uninstallPreviousVersion: true
   # 安装程序和卸载程序图标
   installerIcon: src/assets/icon.ico
   uninstallerIcon: src/assets/icon.ico

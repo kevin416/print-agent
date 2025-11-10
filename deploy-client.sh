@@ -220,7 +220,7 @@ elif [[ "$PLATFORM" == MINGW* ]] || [[ "$PLATFORM" == MSYS* ]] || [[ "$PLATFORM"
     echo "检测到 Windows 平台"
     echo ""
     echo "可用的打包选项："
-    echo "  1) Windows x64 (NSIS 安装程序 + ZIP)"
+    echo "  1) Windows x64 (便携版 ZIP，仅上传便携版)"
     echo "  2) Linux (AppImage + DEB)"
     echo "  3) Windows + Linux"
     echo ""
@@ -275,8 +275,8 @@ mkdir -p updates/local-usb-agent/stable
 
 # 清理旧版本文件，只保留最新版本
 echo "清理旧版本文件（只保留最新版本）..."
-# 删除旧版本文件，但保留目录结构
-find updates/local-usb-agent/win -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.blockmap" \) -delete 2>/dev/null || true
+# 删除旧版本文件，但保留目录结构（只清理 ZIP 和 blockmap，不清理 EXE，因为不再使用）
+find updates/local-usb-agent/win -type f \( -name "*.zip" -o -name "*.blockmap" \) -delete 2>/dev/null || true
 find updates/local-usb-agent/mac -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.blockmap" \) -delete 2>/dev/null || true
 find updates/local-usb-agent/linux -type f \( -name "*.AppImage" -o -name "*.deb" \) -delete 2>/dev/null || true
 
@@ -313,21 +313,9 @@ if ls local-usb-agent-app/build/latest-mac.yml 1> /dev/null 2>&1; then
     echo "  ✓ YAML 文件已复制 (stable-mac.yml)"
 fi
 
-# 复制 Windows 构建产物（只复制最新版本）
-echo "复制 Windows 构建产物（最新版本）..."
-if ls local-usb-agent-app/build/*.exe 1> /dev/null 2>&1; then
-    # 只复制最新的 EXE 文件（按修改时间排序）
-    latest_exe=$(ls -t local-usb-agent-app/build/*.exe 2>/dev/null | head -n 1)
-    if [ -n "$latest_exe" ]; then
-        cp "$latest_exe" updates/local-usb-agent/win/
-        echo "  ✓ EXE 文件已复制: $(basename "$latest_exe")"
-        # 复制对应的 blockmap 文件
-        blockmap_file="${latest_exe}.blockmap"
-        if [ -f "$blockmap_file" ]; then
-            cp "$blockmap_file" updates/local-usb-agent/win/
-        fi
-    fi
-fi
+# 复制 Windows 构建产物（只复制便携版 ZIP，不复制安装版 EXE）
+echo "复制 Windows 构建产物（便携版）..."
+# 只复制 ZIP 文件，不复制 EXE 文件
 if ls local-usb-agent-app/build/*-win*.zip 1> /dev/null 2>&1; then
     # 只复制最新的 ZIP 文件
     latest_zip=$(ls -t local-usb-agent-app/build/*-win*.zip 2>/dev/null | head -n 1)
