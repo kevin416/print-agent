@@ -273,34 +273,73 @@ echo "────────────────────────�
 mkdir -p updates/local-usb-agent/{mac,win,linux}
 mkdir -p updates/local-usb-agent/stable
 
-# 复制 macOS 构建产物
-echo "复制 macOS 构建产物..."
+# 清理旧版本文件，只保留最新版本
+echo "清理旧版本文件（只保留最新版本）..."
+# 删除旧版本文件，但保留目录结构
+find updates/local-usb-agent/win -type f \( -name "*.exe" -o -name "*.zip" -o -name "*.blockmap" \) -delete 2>/dev/null || true
+find updates/local-usb-agent/mac -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.blockmap" \) -delete 2>/dev/null || true
+find updates/local-usb-agent/linux -type f \( -name "*.AppImage" -o -name "*.deb" \) -delete 2>/dev/null || true
+
+# 复制 macOS 构建产物（只复制最新版本）
+echo "复制 macOS 构建产物（最新版本）..."
 if ls local-usb-agent-app/build/*.dmg 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*.dmg updates/local-usb-agent/mac/
-    echo "  ✓ DMG 文件已复制"
+    # 只复制最新的 DMG 文件（按修改时间排序）
+    latest_dmg=$(ls -t local-usb-agent-app/build/*.dmg 2>/dev/null | head -n 1)
+    if [ -n "$latest_dmg" ]; then
+        cp "$latest_dmg" updates/local-usb-agent/mac/
+        echo "  ✓ DMG 文件已复制: $(basename "$latest_dmg")"
+        # 复制对应的 blockmap 文件
+        blockmap_file="${latest_dmg}.blockmap"
+        if [ -f "$blockmap_file" ]; then
+            cp "$blockmap_file" updates/local-usb-agent/mac/
+        fi
+    fi
 fi
 if ls local-usb-agent-app/build/*-mac.zip 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*-mac.zip updates/local-usb-agent/mac/
-    echo "  ✓ ZIP 文件已复制"
+    # 只复制最新的 ZIP 文件
+    latest_zip=$(ls -t local-usb-agent-app/build/*-mac.zip 2>/dev/null | head -n 1)
+    if [ -n "$latest_zip" ]; then
+        cp "$latest_zip" updates/local-usb-agent/mac/
+        echo "  ✓ ZIP 文件已复制: $(basename "$latest_zip")"
+        # 复制对应的 blockmap 文件
+        blockmap_file="${latest_zip}.blockmap"
+        if [ -f "$blockmap_file" ]; then
+            cp "$blockmap_file" updates/local-usb-agent/mac/
+        fi
+    fi
 fi
 if ls local-usb-agent-app/build/latest-mac.yml 1> /dev/null 2>&1; then
     cp local-usb-agent-app/build/latest-mac.yml updates/local-usb-agent/stable/stable-mac.yml
     echo "  ✓ YAML 文件已复制 (stable-mac.yml)"
 fi
-if ls local-usb-agent-app/build/*.blockmap 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*.blockmap updates/local-usb-agent/mac/ 2>/dev/null || true
-    echo "  ✓ Blockmap 文件已复制"
-fi
 
-# 复制 Windows 构建产物
-echo "复制 Windows 构建产物..."
+# 复制 Windows 构建产物（只复制最新版本）
+echo "复制 Windows 构建产物（最新版本）..."
 if ls local-usb-agent-app/build/*.exe 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*.exe updates/local-usb-agent/win/
-    echo "  ✓ EXE 文件已复制"
+    # 只复制最新的 EXE 文件（按修改时间排序）
+    latest_exe=$(ls -t local-usb-agent-app/build/*.exe 2>/dev/null | head -n 1)
+    if [ -n "$latest_exe" ]; then
+        cp "$latest_exe" updates/local-usb-agent/win/
+        echo "  ✓ EXE 文件已复制: $(basename "$latest_exe")"
+        # 复制对应的 blockmap 文件
+        blockmap_file="${latest_exe}.blockmap"
+        if [ -f "$blockmap_file" ]; then
+            cp "$blockmap_file" updates/local-usb-agent/win/
+        fi
+    fi
 fi
 if ls local-usb-agent-app/build/*-win*.zip 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*-win*.zip updates/local-usb-agent/win/
-    echo "  ✓ ZIP 文件已复制"
+    # 只复制最新的 ZIP 文件
+    latest_zip=$(ls -t local-usb-agent-app/build/*-win*.zip 2>/dev/null | head -n 1)
+    if [ -n "$latest_zip" ]; then
+        cp "$latest_zip" updates/local-usb-agent/win/
+        echo "  ✓ ZIP 文件已复制: $(basename "$latest_zip")"
+        # 复制对应的 blockmap 文件
+        blockmap_file="${latest_zip}.blockmap"
+        if [ -f "$blockmap_file" ]; then
+            cp "$blockmap_file" updates/local-usb-agent/win/
+        fi
+    fi
 fi
 if ls local-usb-agent-app/build/latest.yml 1> /dev/null 2>&1; then
     # 检查是否是 Windows 的 YAML（不是 macOS 的）
@@ -310,15 +349,33 @@ if ls local-usb-agent-app/build/latest.yml 1> /dev/null 2>&1; then
     fi
 fi
 
-# 复制 Linux 构建产物
-echo "复制 Linux 构建产物..."
+# 复制 Linux 构建产物（只复制最新版本）
+echo "复制 Linux 构建产物（最新版本）..."
 if ls local-usb-agent-app/build/*.AppImage 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*.AppImage updates/local-usb-agent/linux/
-    echo "  ✓ AppImage 文件已复制"
+    # 只复制最新的 AppImage 文件
+    latest_appimage=$(ls -t local-usb-agent-app/build/*.AppImage 2>/dev/null | head -n 1)
+    if [ -n "$latest_appimage" ]; then
+        cp "$latest_appimage" updates/local-usb-agent/linux/
+        echo "  ✓ AppImage 文件已复制: $(basename "$latest_appimage")"
+        # 复制对应的 blockmap 文件
+        blockmap_file="${latest_appimage}.blockmap"
+        if [ -f "$blockmap_file" ]; then
+            cp "$blockmap_file" updates/local-usb-agent/linux/
+        fi
+    fi
 fi
 if ls local-usb-agent-app/build/*.deb 1> /dev/null 2>&1; then
-    cp local-usb-agent-app/build/*.deb updates/local-usb-agent/linux/
-    echo "  ✓ DEB 文件已复制"
+    # 只复制最新的 DEB 文件
+    latest_deb=$(ls -t local-usb-agent-app/build/*.deb 2>/dev/null | head -n 1)
+    if [ -n "$latest_deb" ]; then
+        cp "$latest_deb" updates/local-usb-agent/linux/
+        echo "  ✓ DEB 文件已复制: $(basename "$latest_deb")"
+        # 复制对应的 blockmap 文件
+        blockmap_file="${latest_deb}.blockmap"
+        if [ -f "$blockmap_file" ]; then
+            cp "$blockmap_file" updates/local-usb-agent/linux/
+        fi
+    fi
 fi
 if ls local-usb-agent-app/build/latest-linux.yml 1> /dev/null 2>&1; then
     cp local-usb-agent-app/build/latest-linux.yml updates/local-usb-agent/stable/stable-linux.yml

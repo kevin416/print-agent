@@ -59,6 +59,8 @@ nsis:
   # 自定义安装脚本：在安装前关闭应用
   # 注意：路径相对于项目根目录
   include: installer.nsh
+  # 禁用警告作为错误（允许安装程序继续执行，即使检测到可能的问题）
+  warningsAsErrors: false
 publish:
   - provider: generic
     url: https://pa.easyify.uk/updates/local-usb-agent
