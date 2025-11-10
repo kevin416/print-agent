@@ -29,29 +29,39 @@ async function initI18n() {
     
     // Listen for locale changes
     window.agent.onLocaleChanged(async (payload) => {
-      const newData = await window.agent.getTranslations(payload.locale);
-      i18n = {
-        t: (key, params) => {
-          const keys = key.split('.');
-          let value = newData.translations;
-          for (const k of keys) {
-            if (value && typeof value === 'object' && k in value) {
-              value = value[k];
-            } else {
-              return key;
+      try {
+        const newData = await window.agent.getTranslations(payload.locale);
+        if (!newData || !newData.translations) {
+          console.error('Failed to load translations for locale:', payload.locale);
+          return;
+        }
+        i18n = {
+          t: (key, params) => {
+            const keys = key.split('.');
+            let value = newData.translations;
+            for (const k of keys) {
+              if (value && typeof value === 'object' && k in value) {
+                value = value[k];
+              } else {
+                console.warn('Translation key not found:', key);
+                return key;
+              }
             }
-          }
-          if (typeof value !== 'string') return key;
-          if (params && Object.keys(params).length > 0) {
-            return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
-              return params[paramKey] !== undefined ? String(params[paramKey]) : match;
-            });
-          }
-          return value;
-        },
-        getLocale: () => newData.locale
-      };
-      updateUI();
+            if (typeof value !== 'string') return key;
+            if (params && Object.keys(params).length > 0) {
+              return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
+                return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+              });
+            }
+            return value;
+          },
+          getLocale: () => newData.locale
+        };
+        // Force update UI immediately
+        updateUI();
+      } catch (error) {
+        console.error('Error updating locale:', error);
+      }
     });
   }
 }
@@ -495,7 +505,7 @@ function renderTelemetryState(state = {}) {
   telemetryStatusChip.classList.toggle('status-online', isOnline);
   telemetryStatusChip.classList.toggle('status-offline', isError || status === 'disabled');
 
-  telemetryMessage.textContent = state.message || t('telemetry.message');
+  telemetryMessage.textContent = state.message || t('telemetry.message.notEnabled');
   telemetryLastSync.textContent = state.lastSuccessAt
     ? t('telemetry.lastSuccess', { time: formatRelativeTime(state.lastSuccessAt) })
     : t('telemetry.lastSuccess', { time: '--' });
@@ -544,10 +554,10 @@ function renderDevices() {
       subtitleParts.push(device.manufacturerName);
     }
     if (device.portPath) {
-      subtitleParts.push(`端口 ${device.portPath}`);
+      subtitleParts.push(t('devices.port', { path: device.portPath }));
     }
     if (device.serialNumber) {
-      subtitleParts.push(`SN ${device.serialNumber}`);
+      subtitleParts.push(t('devices.serialNumber', { serial: device.serialNumber }));
     }
     const subtitleHtml = subtitleParts.length
       ? `<div class="device-secondary">${escapeHtml(subtitleParts.join(' · '))}</div>`
@@ -714,7 +724,7 @@ function renderHotplugEvents() {
       metaParts.push(`PID 0x${Number(device.productId).toString(16)}`);
     }
     if (device.portPath) {
-      metaParts.push(`${t('hotplug.port')} ${device.portPath}`);
+      metaParts.push(t('devices.port', { path: device.portPath }));
     }
     const meta = metaParts.filter(Boolean).join(' · ');
     let autoTestHtml = '';
@@ -769,8 +779,8 @@ function renderPrintHistory() {
       const statusClass = record.status === 'success' ? 'history-status-success' : 'history-status-error';
       const deviceLabel =
         record.connectionType === 'tcp'
-          ? `${record.ip || record.host || t('history.unknown')}:${record.port || 9100} · TCP`
-          : `VID_0x${Number(record.vendorId || 0).toString(16)} · PID_0x${Number(record.productId || 0).toString(16)} · USB`;
+          ? `${record.ip || record.host || t('history.unknown')}:${record.port || 9100} · ${t('history.connectionTypeTcp')}`
+          : `VID_0x${Number(record.vendorId || 0).toString(16)} · PID_0x${Number(record.productId || 0).toString(16)} · ${t('history.connectionTypeUsb')}`;
       const aliasLabel = [record.alias || '', record.role || ''].filter(Boolean).join(' / ') || '--';
       return `
         <tr>
@@ -854,12 +864,12 @@ async function autoTestNewDevice(entry, device) {
     });
     entry.autoTest = {
       status: result?.ok ? 'success' : 'error',
-      message: result?.ok ? '打印成功' : result?.error || '打印失败'
+      message: result?.ok ? t('print.testSuccess') : result?.error || t('print.testFailed')
     };
   } catch (error) {
     entry.autoTest = {
       status: 'error',
-      message: error?.message || '打印失败'
+      message: error?.message || t('print.testFailed')
     };
   }
   renderHotplugEvents();
@@ -908,7 +918,7 @@ async function handleHotplugAction(event) {
   if (!Number.isFinite(vendorId) || !Number.isFinite(productId)) return;
   const original = target.textContent;
   target.disabled = true;
-  target.textContent = '测试中...';
+  target.textContent = t('devices.testing');
   const key = buildUsbKey(vendorId, productId);
   const mapping = printerMappings[key] || {};
   try {
@@ -920,10 +930,10 @@ async function handleHotplugAction(event) {
       role: mapping.role || 'Kitchen'
     });
     if (!result?.ok) {
-      alert(result?.error || '测试打印失败');
+      alert(result?.error || t('print.testFailed'));
     }
   } catch (error) {
-    alert(error?.message || '测试打印失败');
+    alert(error?.message || t('print.testFailed'));
   } finally {
     target.disabled = false;
     target.textContent = original;
@@ -1072,125 +1082,211 @@ btnOnboardingNext.addEventListener('click', async () => {
 if (languageSelect) {
   languageSelect.addEventListener('change', async (e) => {
     const locale = e.target.value;
-    await window.agent.setLocale(locale);
-    await updateUI();
+    try {
+      await window.agent.setLocale(locale);
+      // updateUI() will be called by onLocaleChanged listener
+      // No need to call it here as the listener handles it
+    } catch (error) {
+      console.error('Error setting locale:', error);
+    }
   });
 }
 
+// Helper function to update checkbox labels (they wrap the input, not use 'for' attribute)
+function updateCheckboxLabel(checkbox, translationKey) {
+  if (!checkbox || !i18n) return;
+  const label = checkbox.parentElement;
+  if (!label || label.tagName !== 'LABEL') return;
+  
+  // The label structure is: <label><input>Text</label>
+  // Find the text node that comes after the input
+  // First, try to find it using nextSibling
+  let textNode = checkbox.nextSibling;
+  
+  // If nextSibling is not a text node, look for any text node in the label
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+    // Remove all existing text nodes after the input
+    let node = checkbox.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      if (node.nodeType === Node.TEXT_NODE) {
+        label.removeChild(node);
+      }
+      node = next;
+    }
+    // Add new text node after the input
+    checkbox.after(document.createTextNode(' ' + t(translationKey)));
+  } else {
+    // Update existing text node
+    textNode.textContent = ' ' + t(translationKey);
+  }
+}
+
 // Update all UI elements with translations
-async function updateUI() {
-  if (!i18n) return;
-  
-  // Update header
-  document.querySelector('header strong').textContent = t('app.title');
-  if (restartButton) restartButton.textContent = t('header.restart');
-  if (quitButton) quitButton.textContent = t('header.quit');
-  
-  // Update config section
-  document.querySelector('#config-card h2').textContent = t('config.title');
-  if (saveButton) saveButton.textContent = t('config.save');
-  if (refreshButton) refreshButton.textContent = t('config.refresh');
-  document.querySelector('label[for="shop-id"]').textContent = t('config.shopId');
-  shopIdInput.placeholder = t('config.shopIdPlaceholder');
-  document.querySelector('label[for="server-port"]').textContent = t('config.serverPort');
-  document.querySelector('label[for="autostart-toggle"]').textContent = t('config.autostart');
-  document.querySelector('label[for="allow-self-signed"]').textContent = t('config.allowSelfSigned');
-  if (backgroundModeToggle) {
-    document.querySelector('label[for="background-mode-toggle"]').textContent = t('config.runInBackground');
-  }
-  if (autoTestOnAttachToggle) {
-    document.querySelector('label[for="auto-test-on-attach"]').textContent = t('config.autoTestOnAttach');
+function updateUI() {
+  if (!i18n) {
+    console.warn('updateUI called but i18n is not initialized');
+    return;
   }
   
-  // Update hotplug section
-  document.querySelector('#hotplug-card h2').textContent = t('hotplug.title');
-  document.querySelector('#hotplug-card .muted').textContent = t('hotplug.recentEvents');
+  try {
+    // Update page title
+    document.title = t('app.title');
+    
+    // Update header
+    const headerTitle = document.querySelector('header strong');
+    if (headerTitle) headerTitle.textContent = t('app.title');
+    if (restartButton) restartButton.textContent = t('header.restart');
+    if (quitButton) quitButton.textContent = t('header.quit');
   
-  // Update updates section
-  document.querySelector('#updater-card h2').textContent = t('updates.title');
-  document.querySelector('label[for="updates-feed-url"]').textContent = t('updates.feedUrl');
-  updatesFeedUrlInput.placeholder = t('updates.feedUrlPlaceholder');
-  document.querySelector('label[for="updates-channel"]').textContent = t('updates.channel');
-  updatesChannelSelect.querySelector('option[value="stable"]').textContent = t('updates.channelStable');
-  updatesChannelSelect.querySelector('option[value="beta"]').textContent = t('updates.channelBeta');
-  document.querySelector('label[for="updates-auto-download"]').textContent = t('updates.autoDownload');
-  if (checkUpdateButton) checkUpdateButton.textContent = t('updates.checkUpdate');
-  if (installUpdateButton) installUpdateButton.textContent = t('updates.installUpdate');
-  document.querySelector('#update-release-notes summary').textContent = t('updates.releaseNotes');
+    // Update config section
+    const configCardH2 = document.querySelector('#config-card h2');
+    if (configCardH2) configCardH2.textContent = t('config.title');
+    if (saveButton) saveButton.textContent = t('config.save');
+    if (refreshButton) refreshButton.textContent = t('config.refresh');
+    const shopIdLabel = document.querySelector('label[for="shop-id"]');
+    if (shopIdLabel) shopIdLabel.textContent = t('config.shopId');
+    if (shopIdInput) shopIdInput.placeholder = t('config.shopIdPlaceholder');
+    const serverPortLabel = document.querySelector('label[for="server-port"]');
+    if (serverPortLabel) serverPortLabel.textContent = t('config.serverPort');
+    
+    // Update checkbox labels (they wrap the input, not use 'for' attribute)
+    updateCheckboxLabel(autostartToggle, 'config.autostart');
+    updateCheckboxLabel(allowSelfSignedToggle, 'config.allowSelfSigned');
+    updateCheckboxLabel(backgroundModeToggle, 'config.runInBackground');
+    updateCheckboxLabel(autoTestOnAttachToggle, 'config.autoTestOnAttach');
+    
+    // Update hotplug section
+    const hotplugCardH2 = document.querySelector('#hotplug-card h2');
+    if (hotplugCardH2) hotplugCardH2.textContent = t('hotplug.title');
+    const hotplugMuted = document.querySelector('#hotplug-card .muted');
+    if (hotplugMuted) hotplugMuted.textContent = t('hotplug.recentEvents');
+    
+    // Update updates section
+    const updaterCardH2 = document.querySelector('#updater-card h2');
+    if (updaterCardH2) updaterCardH2.textContent = t('updates.title');
+    const updatesFeedUrlLabel = document.querySelector('label[for="updates-feed-url"]');
+    if (updatesFeedUrlLabel) updatesFeedUrlLabel.textContent = t('updates.feedUrl');
+    if (updatesFeedUrlInput) updatesFeedUrlInput.placeholder = t('updates.feedUrlPlaceholder');
+    const updatesChannelLabel = document.querySelector('label[for="updates-channel"]');
+    if (updatesChannelLabel) updatesChannelLabel.textContent = t('updates.channel');
+    if (updatesChannelSelect) {
+      const stableOption = updatesChannelSelect.querySelector('option[value="stable"]');
+      if (stableOption) stableOption.textContent = t('updates.channelStable');
+      const betaOption = updatesChannelSelect.querySelector('option[value="beta"]');
+      if (betaOption) betaOption.textContent = t('updates.channelBeta');
+    }
+    
+    // Update checkbox label
+    updateCheckboxLabel(updatesAutoDownloadToggle, 'updates.autoDownload');
+    if (checkUpdateButton) checkUpdateButton.textContent = t('updates.checkUpdate');
+    if (installUpdateButton) installUpdateButton.textContent = t('updates.installUpdate');
+    const updateReleaseNotesSummary = document.querySelector('#update-release-notes summary');
+    if (updateReleaseNotesSummary) updateReleaseNotesSummary.textContent = t('updates.releaseNotes');
+    
+    // Update telemetry section
+    const telemetryCardH2 = document.querySelector('#telemetry-card h2');
+    if (telemetryCardH2) telemetryCardH2.textContent = t('telemetry.title');
+    
+    // Update checkbox labels
+    updateCheckboxLabel(telemetryEnabledToggle, 'telemetry.enabled');
+    updateCheckboxLabel(telemetryIncludeLogsToggle, 'telemetry.includeLogs');
+    
+    const telemetryEndpointLabel = document.querySelector('label[for="telemetry-endpoint"]');
+    if (telemetryEndpointLabel) telemetryEndpointLabel.textContent = t('telemetry.endpoint');
+    if (telemetryEndpointInput) telemetryEndpointInput.placeholder = t('telemetry.endpointPlaceholder');
+    const telemetryIntervalLabel = document.querySelector('label[for="telemetry-interval"]');
+    if (telemetryIntervalLabel) telemetryIntervalLabel.textContent = t('telemetry.interval');
+    if (sendHeartbeatButton) sendHeartbeatButton.textContent = t('telemetry.sendNow');
+    const telemetryLogPreviewSummary = document.querySelector('#telemetry-log-preview summary');
+    if (telemetryLogPreviewSummary) telemetryLogPreviewSummary.textContent = t('telemetry.recentLogs');
   
-  // Update telemetry section
-  document.querySelector('#telemetry-card h2').textContent = t('telemetry.title');
-  document.querySelector('label[for="telemetry-enabled"]').textContent = t('telemetry.enabled');
-  document.querySelector('label[for="telemetry-include-logs"]').textContent = t('telemetry.includeLogs');
-  document.querySelector('label[for="telemetry-endpoint"]').textContent = t('telemetry.endpoint');
-  telemetryEndpointInput.placeholder = t('telemetry.endpointPlaceholder');
-  document.querySelector('label[for="telemetry-interval"]').textContent = t('telemetry.interval');
-  if (sendHeartbeatButton) sendHeartbeatButton.textContent = t('telemetry.sendNow');
-  document.querySelector('#telemetry-log-preview summary').textContent = t('telemetry.recentLogs');
-  
-  // Update devices section
-  const devicesSection = document.querySelector('section:has(#device-table)');
-  if (devicesSection) {
-    const devicesHeading = devicesSection.querySelector('h2');
-    if (devicesHeading) devicesHeading.textContent = t('devices.title');
-    const devicesDesc = devicesSection.querySelector('.muted');
-    if (devicesDesc) devicesDesc.textContent = t('devices.description');
+    // Update devices section
+    const devicesSection = document.querySelector('section:has(#device-table)');
+    if (devicesSection) {
+      const devicesHeading = devicesSection.querySelector('h2');
+      if (devicesHeading) devicesHeading.textContent = t('devices.title');
+      const devicesDesc = devicesSection.querySelector('.muted');
+      if (devicesDesc) devicesDesc.textContent = t('devices.description');
+    }
+    if (refreshDevicesButton) refreshDevicesButton.textContent = t('devices.refresh');
+    const deviceTableHeaders = document.querySelectorAll('#device-table thead th');
+    if (deviceTableHeaders.length >= 8) {
+      deviceTableHeaders[0].textContent = t('devices.device');
+      deviceTableHeaders[1].textContent = t('devices.vendorId');
+      deviceTableHeaders[2].textContent = t('devices.productId');
+      deviceTableHeaders[3].textContent = t('devices.alias');
+      deviceTableHeaders[4].textContent = t('devices.role');
+      deviceTableHeaders[5].textContent = t('devices.default');
+      deviceTableHeaders[6].textContent = t('devices.actions');
+      deviceTableHeaders[7].textContent = t('devices.status');
+    }
+    
+    // Update history section
+    const historyCardH2 = document.querySelector('#history-card h2');
+    if (historyCardH2) historyCardH2.textContent = t('history.title');
+    if (refreshHistoryButton) refreshHistoryButton.textContent = t('history.refresh');
+    if (clearHistoryButton) clearHistoryButton.textContent = t('history.clear');
+    const historyTableHeaders = document.querySelectorAll('.history-table thead th');
+    if (historyTableHeaders.length >= 5) {
+      historyTableHeaders[0].textContent = t('history.time');
+      historyTableHeaders[1].textContent = t('history.device');
+      historyTableHeaders[2].textContent = t('history.aliasRole');
+      historyTableHeaders[3].textContent = t('history.status');
+      historyTableHeaders[4].textContent = t('history.details');
+    }
+    
+    // Update logs section
+    const logsSection = document.querySelector('section:has(#log-viewer)');
+    if (logsSection) {
+      const logsHeading = logsSection.querySelector('h2');
+      if (logsHeading) logsHeading.textContent = t('logs.title');
+    }
+    if (refreshLogsButton) refreshLogsButton.textContent = t('logs.refresh');
+    
+    // Update onboarding
+    if (btnOnboardingSkip) btnOnboardingSkip.textContent = t('onboarding.skip');
+    if (btnOnboardingPrev) btnOnboardingPrev.textContent = t('onboarding.prev');
+    if (btnOnboardingNext) btnOnboardingNext.textContent = t('onboarding.next');
+    
+    // Re-render dynamic content
+    // Always render devices, history, and hotplug events (they handle empty states with translations)
+    renderDevices();
+    renderPrintHistory();
+    renderHotplugEvents();
+    renderOnboardingStep();
+    
+    // Render status only if config is available (to avoid errors)
+    if (currentConfig && Object.keys(currentConfig).length > 0) {
+      renderStatus({ 
+        config: currentConfig, 
+        devices: currentDevices || [], 
+        server: { port: currentConfig.server?.port || 40713, running: true }, 
+        autoLaunch: currentConfig.preferences?.autoLaunch, 
+        update: currentUpdateState, 
+        telemetry: currentTelemetryState 
+      });
+    } else {
+      // Set initial status text even without config
+      if (statusChip) {
+        statusChip.textContent = t('status.stopped');
+        statusChip.classList.add('status-offline');
+        statusChip.classList.remove('status-online');
+      }
+      if (statusMeta) {
+        statusMeta.textContent = '--';
+      }
+    }
+  } catch (error) {
+    console.error('Error in updateUI:', error);
   }
-  if (refreshDevicesButton) refreshDevicesButton.textContent = t('devices.refresh');
-  const deviceTableHeaders = document.querySelectorAll('#device-table thead th');
-  if (deviceTableHeaders.length >= 8) {
-    deviceTableHeaders[0].textContent = t('devices.device');
-    deviceTableHeaders[1].textContent = t('devices.vendorId');
-    deviceTableHeaders[2].textContent = t('devices.productId');
-    deviceTableHeaders[3].textContent = t('devices.alias');
-    deviceTableHeaders[4].textContent = t('devices.role');
-    deviceTableHeaders[5].textContent = t('devices.default');
-    deviceTableHeaders[6].textContent = t('devices.actions');
-    deviceTableHeaders[7].textContent = t('devices.status');
-  }
-  
-  // Update history section
-  document.querySelector('#history-card h2').textContent = t('history.title');
-  if (refreshHistoryButton) refreshHistoryButton.textContent = t('history.refresh');
-  if (clearHistoryButton) clearHistoryButton.textContent = t('history.clear');
-  const historyTableHeaders = document.querySelectorAll('.history-table thead th');
-  if (historyTableHeaders.length >= 5) {
-    historyTableHeaders[0].textContent = t('history.time');
-    historyTableHeaders[1].textContent = t('history.device');
-    historyTableHeaders[2].textContent = t('history.aliasRole');
-    historyTableHeaders[3].textContent = t('history.status');
-    historyTableHeaders[4].textContent = t('history.details');
-  }
-  
-  // Update logs section
-  const logsSection = document.querySelector('section:has(#log-viewer)');
-  if (logsSection) {
-    const logsHeading = logsSection.querySelector('h2');
-    if (logsHeading) logsHeading.textContent = t('logs.title');
-  }
-  if (refreshLogsButton) refreshLogsButton.textContent = t('logs.refresh');
-  
-  // Update onboarding
-  if (btnOnboardingSkip) btnOnboardingSkip.textContent = t('onboarding.skip');
-  if (btnOnboardingPrev) btnOnboardingPrev.textContent = t('onboarding.prev');
-  if (btnOnboardingNext) btnOnboardingNext.textContent = t('onboarding.next');
-  
-  // Re-render dynamic content
-  renderStatus({ config: currentConfig, devices: currentDevices, server: { port: currentConfig.server?.port || 40713, running: true }, autoLaunch: currentConfig.preferences?.autoLaunch, update: currentUpdateState, telemetry: currentTelemetryState });
-  renderDevices();
-  renderPrintHistory();
-  renderHotplugEvents();
-  renderOnboardingStep();
 }
 
 // Initialize i18n and load UI
 initI18n().then(() => {
-  refreshStatus().then(() => {
-    renderPrintHistory();
-    refreshLogs();
-    updateUI();
-  });
-  renderHotplugEvents();
+  // Update UI immediately with translations (before data loads)
+  // This ensures HTML hardcoded English text is replaced immediately
+  updateUI();
   
   // Load current locale for language selector
   if (languageSelect && window.agent) {
@@ -1198,4 +1294,13 @@ initI18n().then(() => {
       languageSelect.value = locale;
     });
   }
+  
+  // Then load data and re-render
+  refreshStatus().then(() => {
+    renderPrintHistory();
+    refreshLogs();
+    // Data is loaded, dynamic content will use translations from render functions
+  });
+  // Render hotplug events (will use translations from renderHotplugEvents)
+  renderHotplugEvents();
 });

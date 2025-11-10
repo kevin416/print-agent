@@ -13,11 +13,23 @@ let getServerState = () => ({ running: false });
 let getUpdateState = () => ({})
 let timer = null;
 let pending = false;
+let getI18n = null;
+
+function setI18n(i18nGetter) {
+  getI18n = i18nGetter;
+}
+
+function t(key, params = {}) {
+  if (!getI18n) return key;
+  const i18n = getI18n();
+  if (!i18n) return key;
+  return i18n.t(key, params);
+}
 
 const state = {
   enabled: false,
   status: 'disabled',
-  message: '尚未启用心跳上报',
+  message: '', // Will be set by applyConfig
   endpoint: DEFAULT_ENDPOINT,
   includeLogs: true,
   intervalMs: DEFAULT_INTERVAL_MS,
@@ -149,14 +161,14 @@ async function sendHeartbeat(forced = false) {
   const endpoint = telemetryConfig.endpoint || state.endpoint || DEFAULT_ENDPOINT;
 
   if (!state.enabled || telemetryConfig.enabled === false) {
-    updateState({ status: 'disabled', message: '心跳未启用', online: false });
+    updateState({ status: 'disabled', message: t('telemetry.status.disabled'), online: false });
     return { sent: false, reason: 'disabled' };
   }
 
   if (!shopId) {
     updateState({
-      status: 'disabled',
-      message: '尚未配置分店 Shop ID，无法上报心跳',
+      status: 'waiting',
+      message: t('telemetry.message.waitingForShopId'),
       online: false
     });
     return { sent: false, reason: 'missing-shop-id' };
@@ -165,7 +177,7 @@ async function sendHeartbeat(forced = false) {
   if (!endpoint) {
     updateState({
       status: 'error',
-      message: '未设置上报地址',
+      message: t('telemetry.message.missingEndpoint'),
       online: false
     });
     return { sent: false, reason: 'missing-endpoint' };
@@ -181,7 +193,7 @@ async function sendHeartbeat(forced = false) {
   state.includeLogs = telemetryConfig.includeLogs !== false;
 
   const nowIso = new Date().toISOString();
-  updateState({ status: 'sending', message: '正在发送心跳…', lastSentAt: nowIso });
+  updateState({ status: 'sending', message: t('telemetry.status.sending'), lastSentAt: nowIso });
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), state.timeoutMs);
@@ -204,7 +216,7 @@ async function sendHeartbeat(forced = false) {
     state.lastLogs = payload.logs?.recent || [];
     updateState({
       status: 'online',
-      message: '心跳已上报',
+      message: t('telemetry.message.heartbeatSent'),
       lastSuccessAt: successIso,
       consecutiveFailures: 0,
       lastResponseCode: response.status,
@@ -217,7 +229,7 @@ async function sendHeartbeat(forced = false) {
     const failureIso = new Date().toISOString();
     updateState({
       status: 'error',
-      message: error?.message || '心跳发送失败',
+      message: error?.message || t('telemetry.message.sendFailed'),
       lastFailureAt: failureIso,
       lastError: error?.message || String(error),
       consecutiveFailures: (state.consecutiveFailures || 0) + 1,
@@ -246,19 +258,19 @@ function applyConfig() {
 
   if (!enabled) {
     clearTimer();
-    updateState({ status: 'disabled', message: '心跳未启用', online: false });
+    updateState({ status: 'disabled', message: t('telemetry.status.disabled'), online: false });
     return;
   }
 
   if (!configStore.get('shopId')) {
-    updateState({ status: 'waiting', message: '等待配置分店 Shop ID', online: false });
+    updateState({ status: 'waiting', message: t('telemetry.status.waiting'), online: false });
     clearTimer();
     return;
   }
 
   updateState({
     status: 'idle',
-    message: '心跳服务已启动',
+    message: t('telemetry.message.serviceStarted'),
     online: state.lastSuccessAt ? state.online : false
   });
 
@@ -266,7 +278,7 @@ function applyConfig() {
 }
 
 async function init(options) {
-  const { app, window, store, usb, log, getServerState: getServerStateFn, getUpdateState: getUpdateStateFn } = options;
+  const { app, window, store, usb, log, getServerState: getServerStateFn, getUpdateState: getUpdateStateFn, getI18n: i18nGetter } = options;
   appRef = app;
   mainWindow = window;
   configStore = store;
@@ -274,6 +286,14 @@ async function init(options) {
   logger = log;
   getServerState = typeof getServerStateFn === 'function' ? getServerStateFn : getServerState;
   getUpdateState = typeof getUpdateStateFn === 'function' ? getUpdateStateFn : getUpdateState;
+  if (i18nGetter) {
+    setI18n(i18nGetter);
+  }
+  
+  // Initialize state message with translation
+  if (!state.message && getI18n) {
+    state.message = t('telemetry.message.notEnabled');
+  }
 
   notifyRenderer();
   applyConfig();
@@ -291,9 +311,83 @@ function stop() {
   clearTimer();
 }
 
+function refreshState() {
+  // Update messages with new locale without changing the current status
+  const currentStatus = state.status;
+  const currentLastSuccessAt = state.lastSuccessAt;
+  const currentLastFailureAt = state.lastFailureAt;
+  const currentLastSentAt = state.lastSentAt;
+  const currentNextPlannedAt = state.nextPlannedAt;
+  const currentOnline = state.online;
+  const currentLastLogs = state.lastLogs;
+  const currentLastError = state.lastError;
+  const currentLastResponseCode = state.lastResponseCode;
+  const currentConsecutiveFailures = state.consecutiveFailures;
+  
+  // Update status-specific messages with new locale
+  if (currentStatus === 'online') {
+    updateState({
+      status: 'online',
+      message: t('telemetry.message.heartbeatSent'),
+      lastSuccessAt: currentLastSuccessAt,
+      lastResponseCode: currentLastResponseCode,
+      consecutiveFailures: 0,
+      lastError: null,
+      online: true
+    });
+  } else if (currentStatus === 'sending') {
+    updateState({
+      status: 'sending',
+      message: t('telemetry.status.sending'),
+      lastSentAt: currentLastSentAt
+    });
+  } else if (currentStatus === 'error') {
+    updateState({
+      status: 'error',
+      message: currentLastError || t('telemetry.message.sendFailed'),
+      lastFailureAt: currentLastFailureAt,
+      lastError: currentLastError,
+      consecutiveFailures: currentConsecutiveFailures,
+      online: false
+    });
+  } else if (currentStatus === 'waiting') {
+    updateState({
+      status: 'waiting',
+      message: t('telemetry.message.waitingForShopId'),
+      online: false
+    });
+  } else if (currentStatus === 'idle') {
+    updateState({
+      status: 'idle',
+      message: t('telemetry.message.serviceStarted'),
+      online: currentOnline
+    });
+  } else if (currentStatus === 'disabled') {
+    updateState({
+      status: 'disabled',
+      message: t('telemetry.status.disabled'),
+      online: false
+    });
+  }
+  
+  // Restore logs if they existed
+  if (currentLastLogs && currentLastLogs.length > 0) {
+    state.lastLogs = currentLastLogs;
+  }
+  
+  // Restore timing information
+  if (currentNextPlannedAt) {
+    state.nextPlannedAt = currentNextPlannedAt;
+  }
+  
+  notifyRenderer();
+}
+
 module.exports = {
   init,
   stop,
   sendHeartbeat,
-  getState: () => ({ ...state, lastLogs: state.lastLogs ? state.lastLogs.slice(-20) : [] })
+  getState: () => ({ ...state, lastLogs: state.lastLogs ? state.lastLogs.slice(-20) : [] }),
+  setI18n,
+  refreshState
 };

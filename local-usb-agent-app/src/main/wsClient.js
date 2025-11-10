@@ -140,7 +140,7 @@ module.exports = function createWsClient(options) {
   function sendRegister() {
     const shopId = getShopId();
     if (!shopId) {
-      logger.warn('WS register skipped: shopId not configured');
+      logger.warn(t('websocket.registerSkippedNoShopId'));
       return;
     }
     const payload = {
@@ -156,7 +156,7 @@ module.exports = function createWsClient(options) {
     };
     if (sendMessage(payload)) {
       state.lastRegisterAt = new Date().toISOString();
-      logger.info('WS register sent', { shopId });
+      logger.info(t('websocket.registerSent'), { shopId });
     }
   }
 
@@ -307,15 +307,15 @@ module.exports = function createWsClient(options) {
   async function handleTaskConfig(message) {
     const { id, payload } = message;
     if (!payload || typeof payload !== 'object') {
-      sendMessage({ type: 'task_result', id, payload: { status: 'error', message: '无效配置' } });
+      sendMessage({ type: 'task_result', id, payload: { status: 'error', message: t('websocket.invalidConfig') } });
       return;
     }
     try {
       store.merge(payload);
-      sendMessage({ type: 'task_result', id, payload: { status: 'success', message: '配置已更新' } });
+      sendMessage({ type: 'task_result', id, payload: { status: 'success', message: t('websocket.configUpdated') } });
     } catch (error) {
       logger.error('WS config update failed', error);
-      sendMessage({ type: 'task_result', id, payload: { status: 'error', message: error?.message || '配置失败' } });
+      sendMessage({ type: 'task_result', id, payload: { status: 'error', message: error?.message || t('websocket.configFailed') } });
     }
   }
 
@@ -331,10 +331,10 @@ module.exports = function createWsClient(options) {
     let message;
     try {
       message = JSON.parse(raw.toString());
-    } catch (error) {
-      logger.warn('WS received invalid JSON', { raw: String(raw) });
-      return;
-    }
+      } catch (error) {
+        logger.warn(t('websocket.invalidJson'), { raw: String(raw) });
+        return;
+      }
 
     switch (message.type) {
       case 'ack':
@@ -416,7 +416,7 @@ module.exports = function createWsClient(options) {
         })
       );
     } catch (error) {
-      logger.warn('Failed to send legacy print result', error);
+      logger.warn(t('websocket.sendResultFailed'), error);
     }
   }
 
@@ -426,7 +426,7 @@ module.exports = function createWsClient(options) {
         socket.removeAllListeners();
         socket.terminate();
       } catch (error) {
-        logger.warn('WS cleanup error', error);
+        logger.warn(t('websocket.cleanupError'), error);
       }
     }
     socket = null;
@@ -438,21 +438,21 @@ module.exports = function createWsClient(options) {
     if (shuttingDown) return;
     const remote = store.get('remote') || {};
     if (remote.enabled === false) {
-      logger.info('WS remote disabled by config');
+      logger.info(t('websocket.remoteDisabled'));
       return;
     }
     const shopId = getShopId();
     if (!shopId) {
-      logger.info('WS connect skipped: shopId not configured');
+      logger.info(t('websocket.connectSkippedNoShopId'));
       return;
     }
     const wsUrl = resolveWsUrl(store);
     if (!wsUrl) {
-      logger.warn('WS url not configured');
+      logger.warn(t('websocket.urlNotConfigured'));
       return;
     }
     currentWsUrl = wsUrl;
-    logger.info('WS connecting', { wsUrl });
+    logger.info(t('websocket.connecting'), { wsUrl });
     socket = new WebSocket(wsUrl, {
       headers: {
         'x-shop-id': shopId,
@@ -461,7 +461,7 @@ module.exports = function createWsClient(options) {
     });
 
     socket.on('open', () => {
-      logger.info('WS connected');
+      logger.info(t('websocket.connected'));
       reconnectDelay = 0;
       sendRegister();
       sendHeartbeat();
@@ -471,13 +471,13 @@ module.exports = function createWsClient(options) {
     socket.on('message', handleMessage);
 
     socket.on('close', (code) => {
-      logger.warn('WS closed', { code });
+      logger.warn(t('websocket.closed'), { code });
       cleanupSocket();
       scheduleReconnect();
     });
 
     socket.on('error', (error) => {
-      logger.error('WS error', error);
+      logger.error(t('websocket.error'), error);
       state.lastError = error?.message || String(error);
     });
   }

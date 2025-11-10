@@ -2,6 +2,20 @@ const net = require('net');
 const iconv = require('iconv-lite');
 const logger = require('./logger');
 
+// i18n will be injected via setI18n function
+let getI18n = null;
+
+function setI18n(i18nGetter) {
+  getI18n = i18nGetter;
+}
+
+function t(key, params = {}) {
+  if (!getI18n) return key;
+  const i18n = getI18n();
+  if (!i18n) return key;
+  return i18n.t(key, params);
+}
+
 const DEFAULT_TIMEOUT = 8000;
 
 function normaliseEncoding({ data, encoding = 'base64', text }) {
@@ -12,7 +26,7 @@ function normaliseEncoding({ data, encoding = 'base64', text }) {
     return iconv.encode(text, 'gb18030');
   }
   if (!data) {
-    throw new Error('缺少打印数据');
+    throw new Error(t('tcp.missingPrintData'));
   }
   if (encoding === 'buffer') {
     return Buffer.from(data);
@@ -43,7 +57,7 @@ function createSocket({ host, port, timeout = DEFAULT_TIMEOUT }) {
     };
 
     socket.setTimeout(timeout, () => {
-      const error = new Error('TCP 打印连接超时');
+      const error = new Error(t('tcp.connectionTimeout'));
       error.code = 'TCP_TIMEOUT';
       finalize(error);
       socket.destroy();
@@ -101,7 +115,7 @@ async function sendBuffer({ host, port, buffer, timeout = DEFAULT_TIMEOUT }) {
 async function print({ ip, host, port = 9100, data, encoding, text, timeout }) {
   const targetHost = host || ip;
   if (!targetHost) {
-    throw new Error('缺少 TCP 打印机 IP 地址');
+    throw new Error(t('tcp.missingPrinterIp'));
   }
   const buffer = normaliseEncoding({ data, encoding, text });
   const startedAt = Date.now();
@@ -118,7 +132,8 @@ async function print({ ip, host, port = 9100, data, encoding, text, timeout }) {
 }
 
 module.exports = {
-  print
+  print,
+  setI18n
 };
 
 

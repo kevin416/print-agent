@@ -136,6 +136,205 @@ rm -rf node_modules/.cache
 npm run build -- --clean
 ```
 
+## 打包上传到服务器
+
+### 步骤概览
+
+1. **打包应用**：在对应平台构建安装包
+2. **整理构建产物**：将构建产物复制到 `updates/` 目录
+3. **上传到服务器**：使用部署脚本同步到服务器
+
+### 详细步骤
+
+#### 1. 打包应用
+
+**macOS:**
+```bash
+cd print-agent/local-usb-agent-app
+npm run build
+# 或指定架构
+npx electron-builder --mac --arm64
+npx electron-builder --mac --x64
+```
+
+**Windows:**
+```bash
+cd print-agent/local-usb-agent-app
+npx electron-builder --win --x64
+```
+
+构建产物会输出到 `build/` 目录，包含：
+- 安装包（`.dmg`, `.exe`, `.zip` 等）
+- YAML 更新文件（`latest-mac.yml`, `latest.yml` 等）
+- Blockmap 文件（用于增量更新）
+
+#### 2. 整理构建产物
+
+将构建产物复制到 `print-agent/updates/local-usb-agent/` 目录，按平台分类：
+
+```bash
+# 从项目根目录执行
+cd print-agent
+
+# 创建目录结构（如果不存在）
+mkdir -p updates/local-usb-agent/{mac,win,linux}
+
+# 创建稳定通道目录
+mkdir -p updates/local-usb-agent/stable
+
+# 复制 macOS 构建产物
+cp local-usb-agent-app/build/*.dmg updates/local-usb-agent/mac/ 2>/dev/null || true
+cp local-usb-agent-app/build/*-mac.zip updates/local-usb-agent/mac/ 2>/dev/null || true
+cp local-usb-agent-app/build/latest-mac.yml updates/local-usb-agent/stable/stable-mac.yml 2>/dev/null || true
+cp local-usb-agent-app/build/*.blockmap updates/local-usb-agent/mac/ 2>/dev/null || true
+
+# 复制 Windows 构建产物
+cp local-usb-agent-app/build/*.exe updates/local-usb-agent/win/ 2>/dev/null || true
+cp local-usb-agent-app/build/*-win*.zip updates/local-usb-agent/win/ 2>/dev/null || true
+cp local-usb-agent-app/build/latest.yml updates/local-usb-agent/stable/stable.yml 2>/dev/null || true
+cp local-usb-agent-app/build/*.blockmap updates/local-usb-agent/win/ 2>/dev/null || true
+
+# 复制 Linux 构建产物（如果有）
+cp local-usb-agent-app/build/*.AppImage updates/local-usb-agent/linux/ 2>/dev/null || true
+cp local-usb-agent-app/build/*.deb updates/local-usb-agent/linux/ 2>/dev/null || true
+cp local-usb-agent-app/build/latest-linux.yml updates/local-usb-agent/stable/stable-linux.yml 2>/dev/null || true
+```
+
+**目录结构示例：**
+```
+print-agent/updates/local-usb-agent/
+├── mac/
+│   ├── Yepos Agent-0.2.1.dmg
+│   ├── Yepos Agent-0.2.1-mac.zip
+│   └── *.blockmap
+├── win/
+│   ├── Yepos Agent Setup-0.2.1.exe
+│   ├── Yepos Agent-0.2.1-win64.zip
+│   └── *.blockmap
+├── linux/
+│   ├── *.AppImage
+│   └── *.deb
+└── stable/
+    ├── stable-mac.yml
+    ├── stable.yml
+    └── stable-linux.yml
+```
+
+> **注意**：YAML 文件需要放在 `stable/` 或 `beta/` 子目录下，`electron-updater` 会根据更新源 URL 和通道自动查找对应的文件。
+
+#### 3. 上传到服务器
+
+使用管理后台的部署脚本自动上传：
+
+```bash
+cd print-agent/admin
+
+# 设置服务器密码（如果需要 sudo 权限）
+export SUDO_PASS="your-sudo-password"
+
+# 执行部署脚本（会自动同步 updates/ 目录）
+./deploy-admin.sh
+```
+
+部署脚本会：
+- 上传管理后台文件
+- **自动同步 `updates/` 目录到服务器**（使用 `rsync`）
+- 重启 PM2 服务
+- 重载 Nginx 配置
+
+#### 4. 验证上传
+
+检查服务器上的文件：
+
+```bash
+# SSH 连接到服务器
+ssh kevin@90.195.120.165
+
+# 检查更新文件
+ls -lh ~/print-agent/updates/local-usb-agent/mac/
+ls -lh ~/print-agent/updates/local-usb-agent/win/
+
+# 测试访问（应该返回 YAML 文件内容）
+curl https://pa.easyify.uk/updates/local-usb-agent/stable/stable-mac.yml
+curl https://pa.easyify.uk/updates/local-usb-agent/stable/stable.yml
+```
+
+### 注意事项
+
+1. **YAML 文件命名**：
+   - `electron-updater` 会根据平台和通道自动查找对应的 YAML 文件
+   - macOS: `stable-mac.yml` 或 `latest-mac.yml`
+   - Windows: `stable.yml` 或 `latest.yml`
+   - Linux: `stable-linux.yml` 或 `latest-linux.yml`
+
+2. **更新源路径**：
+   - 更新源基础 URL: `https://pa.easyify.uk/updates/local-usb-agent`
+   - 稳定通道: `https://pa.easyify.uk/updates/local-usb-agent/stable/`
+   - Beta 通道: `https://pa.easyify.uk/updates/local-usb-agent/beta/`
+
+3. **版本号**：
+   - 确保 `package.json` 中的版本号已更新
+   - YAML 文件中的版本号会自动从 `package.json` 读取
+
+4. **文件权限**：
+   - 确保服务器上的文件有正确的读取权限
+   - Nginx 配置应允许访问 `.yml` 和 `.blockmap` 文件
+
+5. **增量更新**：
+   - Blockmap 文件用于支持增量更新，建议一并上传
+   - 如果文件较大，可以考虑只上传完整安装包
+
+### 快速脚本
+
+项目根目录已提供自动化脚本 `deploy-client.sh`，可以一键完成打包、整理和上传：
+
+```bash
+# 从项目根目录执行
+cd print-agent
+./deploy-client.sh
+```
+
+脚本功能：
+- ✅ **版本号管理**：自动递增或手动输入新版本号
+  - 自动递增补丁版本 (0.2.2 -> 0.2.3)
+  - 自动递增次版本 (0.2.2 -> 0.3.0)
+  - 自动递增主版本 (0.2.2 -> 1.0.0)
+  - 手动输入新版本号
+  - 保持当前版本号
+- ✅ 自动检测当前平台（macOS/Windows/Linux）
+- ✅ 根据平台自动选择打包命令
+- ✅ 自动整理构建产物到 `updates/` 目录
+- ✅ 显示整理后的文件列表
+- ✅ 可选择是否立即上传到服务器
+- ✅ 如果选择不上传，会提示手动上传的方法
+- ✅ 如果取消打包，可选择回滚版本号
+
+**使用示例：**
+```bash
+# 1. 进入项目根目录
+cd print-agent
+
+# 2. 运行脚本
+./deploy-client.sh
+
+# 3. 按提示操作：
+#    - 选择版本号管理方式（自动递增或手动输入）
+#    - 确认是否开始打包
+#    - 确认是否上传到服务器
+```
+
+**版本号管理说明：**
+- **补丁版本** (Patch)：修复 bug 或小改动，例如 0.2.2 -> 0.2.3
+- **次版本** (Minor)：新功能或较大改动，例如 0.2.2 -> 0.3.0
+- **主版本** (Major)：重大变更或不兼容更新，例如 0.2.2 -> 1.0.0
+- **手动输入**：可以输入任意符合 `x.y.z` 格式的版本号
+- **保持当前**：不修改版本号，使用当前版本打包
+
+**注意事项：**
+- 脚本会自动检测当前平台并打包对应版本
+- 如果需要打包其他平台，请手动执行对应的打包命令
+- 上传到服务器需要 SSH 访问权限和 `SUDO_PASS` 环境变量（如果需要 sudo 权限）
+
 ## 自动更新
 
 - 默认更新源：`https://pa.easyify.uk/updates/local-usb-agent`（可在 UI 中修改）
@@ -199,10 +398,11 @@ npm run build -- --clean
 
 | 问题 | 排查建议 |
 | ---- | -------- |
-| 托盘/状态栏看不到图标 | Windows 需展开托盘箭头并设置“始终显示”；macOS 请确保状态栏未隐藏图标。 |
-| 开机未自动启动 | 检查“随系统启动”是否勾选，并确认启动目录存在 `.lnk`；必要时重新勾选一次。 |
+| 托盘/状态栏看不到图标 | Windows 需展开托盘箭头并设置"始终显示"；macOS 请确保状态栏未隐藏图标。 |
+| 开机未自动启动 | 检查"随系统启动"是否勾选，并确认启动目录存在 `.lnk`；必要时重新勾选一次。 |
+| 再次打开应用报错端口占用 | 应用已实现单实例锁定，如果仍报错，请检查是否有残留进程，可通过任务管理器结束进程后重新打开。 |
 | 打印中文仍乱码 | 先运行内置测试单确认编码，如仍异常请检查 WinUSB 驱动并确认上游数据为 UTF-8。 |
-| 默认打印机测试失败 | 查看托盘“最近测试记录”或 `agent.log`，确认设备是否被其他程序占用。 |
+| 默认打印机测试失败 | 查看托盘"最近测试记录"或 `agent.log`，确认设备是否被其他程序占用。 |
 
 ## 目录结构
 

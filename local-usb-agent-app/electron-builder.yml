@@ -51,7 +51,8 @@ nsis:
   deleteAppDataOnUninstall: false
   # 安装程序显示名称（使用 productName）
   oneClick: false
-  perMachine: false
+  # 默认选择"为所有用户安装"（Anyone who uses this computer）
+  perMachine: true
   # 安装程序和卸载程序图标
   installerIcon: src/assets/icon.ico
   uninstallerIcon: src/assets/icon.ico

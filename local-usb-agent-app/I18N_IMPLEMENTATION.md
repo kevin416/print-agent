@@ -8,8 +8,8 @@
 
 ### 1. 国际化模块
 - ✅ 创建了 `src/i18n/index.js` - 主进程 i18n 模块
-- ✅ 创建了 `src/i18n/zh-CN.json` - 中文翻译文件（216 个翻译键）
-- ✅ 创建了 `src/i18n/en-US.json` - 英文翻译文件（216 个翻译键）
+- ✅ 创建了 `src/i18n/zh-CN.json` - 中文翻译文件（266 个翻译键）
+- ✅ 创建了 `src/i18n/en-US.json` - 英文翻译文件（266 个翻译键）
 - ✅ 创建了 `src/renderer/i18n.js` - 渲染进程 i18n 辅助模块
 
 ### 2. 主进程国际化
@@ -19,6 +19,11 @@
 - ✅ 打印历史记录消息国际化
 - ✅ WebSocket 客户端消息国际化
 - ✅ 错误消息国际化
+- ✅ USB 管理器错误消息国际化（`usbManager.js`）
+- ✅ TCP 打印机管理器错误消息国际化（`tcpPrinterManager.js`）
+- ✅ 服务器错误消息国际化（`server.js`）
+- ✅ 远程监控状态消息国际化（`telemetry.js`）
+- ✅ 自动更新状态消息国际化（`updater.js`）
 
 ### 3. 渲染进程国际化
 - ✅ 所有 UI 文本国际化
@@ -57,6 +62,9 @@
 14. **common** - 通用文本
 15. **language** - 语言相关
 16. **print** - 打印相关
+17. **server** - 服务器相关
+18. **websocket** - WebSocket 相关
+19. **tcp** - TCP 打印相关
 
 ## 使用方式
 

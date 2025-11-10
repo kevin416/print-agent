@@ -15,6 +15,21 @@ const printHistory = require('./printHistory');
 const createWsClient = require('./wsClient');
 const { getI18n, DEFAULT_LANGUAGE } = require('../i18n');
 
+// 抑制 macOS 上 Electron 的 IMK 相关警告（不影响功能）
+if (process.platform === 'darwin') {
+  // 重定向 stderr 以过滤 IMK 相关错误
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = function(chunk, encoding, fd) {
+    const message = chunk.toString();
+    // 过滤 IMKCFRunLoopWakeUpReliable 相关错误
+    if (message.includes('IMKCFRunLoopWakeUpReliable') || 
+        message.includes('mach port for IMK')) {
+      return true; // 抑制输出
+    }
+    return originalStderrWrite(chunk, encoding, fd);
+  };
+}
+
 // 根据平台选择图标文件
 const ICON_PATH_SVG = path.join(__dirname, '../assets/icon-512.svg');
 const ICON_PATH_ICO = path.join(__dirname, '../assets/icon.ico');
@@ -470,11 +485,26 @@ async function bootstrap() {
     }
   }
 
-  serverHandle = await startServer({ configStore, usbManager, tcpPrinterManager, printerMappings, logger });
+  serverHandle = await startServer({ 
+    configStore, 
+    usbManager, 
+    tcpPrinterManager, 
+    printerMappings, 
+    logger,
+    getI18n: () => i18n
+  });
+  
+  // Inject i18n into modules
+  if (usbManager.setI18n) {
+    usbManager.setI18n(() => i18n);
+  }
+  if (tcpPrinterManager.setI18n) {
+    tcpPrinterManager.setI18n(() => i18n);
+  }
 
   createWindow();
   ensureTray();
-  await updater.init(mainWindow, configStore);
+  await updater.init(mainWindow, configStore, () => i18n);
   await telemetry.init({
     app,
     window: mainWindow,
@@ -482,7 +512,8 @@ async function bootstrap() {
     usb: usbManager,
     log: logger,
     getServerState: () => ({ running: Boolean(serverHandle) }),
-    getUpdateState: () => updater.getState()
+    getUpdateState: () => updater.getState(),
+    getI18n: () => i18n
   });
 
   configStore.onDidChange('printerMappings', () => emitPrinterMappings());
@@ -539,7 +570,9 @@ app.on('window-all-closed', (event) => {
   event.preventDefault();
 });
 
-app.on('activate', () => {
+app.on('activate', async () => {
+  // 确保应用已就绪
+  await app.whenReady();
   if (!mainWindow) {
     createWindow();
   } else {
@@ -556,7 +589,9 @@ if (!gotTheLock) {
   app.quit();
 } else {
   // 处理第二个实例启动事件（用户再次打开应用）
-  app.on('second-instance', () => {
+  app.on('second-instance', async () => {
+    // 确保应用已就绪
+    await app.whenReady();
     // 如果窗口已存在，显示并聚焦
     if (mainWindow) {
       if (mainWindow.isMinimized()) {
@@ -891,6 +926,13 @@ ipcMain.handle('agent:set-locale', async (_event, locale) => {
       i18n = getI18n(locale);
     }
     updateTrayMenu();
+    // Refresh state messages in telemetry and updater modules with new locale
+    if (telemetry && typeof telemetry.refreshState === 'function') {
+      telemetry.refreshState();
+    }
+    if (updater && typeof updater.refreshState === 'function') {
+      updater.refreshState();
+    }
     if (mainWindow?.webContents) {
       mainWindow.webContents.send('agent:locale-changed', { locale });
     }
@@ -905,6 +947,13 @@ configStore.onDidChange('locale', () => {
   if (i18n) {
     i18n.setLocale(locale);
     updateTrayMenu();
+    // Refresh state messages in telemetry and updater modules
+    if (telemetry && typeof telemetry.refreshState === 'function') {
+      telemetry.refreshState();
+    }
+    if (updater && typeof updater.refreshState === 'function') {
+      updater.refreshState();
+    }
   }
   if (mainWindow?.webContents) {
     mainWindow.webContents.send('agent:locale-changed', { locale });

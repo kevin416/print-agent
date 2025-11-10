@@ -59,7 +59,18 @@
       "notChecked": "Update not checked yet",
       "cannotCheck": "Cannot check for updates: {reason}",
       "cannotStartCheck": "Cannot start check, please confirm update source is configured.",
-      "noUpdateAvailable": "No update available to install, please check and download first."
+      "noUpdateAvailable": "No update available to install, please check and download first.",
+      "feedUrlNotSet": "Update source not set",
+      "enabled": "Auto update enabled",
+      "configFailed": "Failed to configure auto update",
+      "checking": "Checking for updates…",
+      "updateAvailable": "New version available: {version}",
+      "upToDate": "Already up to date",
+      "error": "Auto update error",
+      "parseError": "Update source configuration error",
+      "downloading": "Downloading update…",
+      "downloaded": "Update downloaded, ready to install",
+      "checkFailed": "Failed to check for updates"
     },
     "feedUrl": "Update Feed URL",
     "feedUrlPlaceholder": "https://.../updates/local-usb-agent",
@@ -84,7 +95,14 @@
       "online": "Online",
       "error": "Error"
     },
-    "message": "Heartbeat reporting not enabled.",
+    "message": {
+      "notEnabled": "Heartbeat reporting not enabled.",
+      "waitingForShopId": "Shop ID not configured, cannot send heartbeat",
+      "missingEndpoint": "Endpoint URL not set",
+      "heartbeatSent": "Heartbeat sent",
+      "sendFailed": "Heartbeat send failed",
+      "serviceStarted": "Heartbeat service started"
+    },
     "enabled": "Enable Heartbeat Reporting",
     "includeLogs": "Upload Log Tail",
     "endpoint": "Endpoint URL",
@@ -118,8 +136,10 @@
     "failed": "Failed",
     "attached": "Just Attached",
     "detached": "Just Detached",
-    "mayNotBePrinter": "⚠️ May Not Be Printer",
-    "usbDevice": "USB Device"
+    "mayNotBePrinter": "⚠️ May not be a printer",
+    "usbDevice": "USB Device",
+    "port": "Port {path}",
+    "serialNumber": "SN {serial}"
   },
   "history": {
     "title": "Print Test History",
@@ -134,7 +154,9 @@
     "details": "Details",
     "success": "Success",
     "failed": "Failed",
-    "unknown": "Unknown Address"
+    "unknown": "Unknown Address",
+    "connectionTypeTcp": "TCP",
+    "connectionTypeUsb": "USB"
   },
   "logs": {
     "title": "Logs",
@@ -284,7 +306,47 @@
     "localAgentFailed": "Local agent print failed",
     "printFailed": "Print failed",
     "missingVendorProduct": "Missing vendorId / productId",
-    "missingTcpIp": "Missing TCP printer IP address"
+    "missingTcpIp": "Missing TCP printer IP address",
+    "deviceNotFound": "Device not found",
+    "cannotReadPrinterInterface": "Cannot read printer interface",
+    "noWritableEndpoint": "No writable endpoint found",
+    "usbPrinterNotFound": "USB printer not found",
+    "closeUsbDeviceFailed": "Failed to close USB device",
+    "releaseInterfaceFailed": "Failed to release interface",
+    "closeDeviceFailed": "Failed to close device",
+    "cannotDetachKernelDriver": "Cannot detach kernel driver"
+  },
+  "server": {
+    "missingPrintContent": "Missing print content",
+    "portInUse": "Port {port} is already in use, another instance may be running",
+    "listening": "Local agent server listening",
+    "healthCheckFailed": "Health check failed",
+    "printRequestFailed": "Print request failed",
+    "tcpPrintCompleted": "TCP print request completed",
+    "usbPrintCompleted": "USB print request completed"
+  },
+  "websocket": {
+    "configUpdated": "Configuration updated",
+    "configFailed": "Configuration failed",
+    "invalidConfig": "Invalid configuration",
+    "registerSkippedNoShopId": "Register skipped: Shop ID not configured",
+    "registerSent": "WebSocket register sent",
+    "sendFailed": "WebSocket send failed",
+    "invalidJson": "Received invalid JSON",
+    "remoteDisabled": "Remote feature disabled by configuration",
+    "connectSkippedNoShopId": "Connect skipped: Shop ID not configured",
+    "urlNotConfigured": "WebSocket URL not configured",
+    "connecting": "Connecting WebSocket",
+    "connected": "WebSocket connected",
+    "closed": "WebSocket closed",
+    "error": "WebSocket error",
+    "cleanupError": "WebSocket cleanup error",
+    "sendResultFailed": "Failed to send print result"
+  },
+  "tcp": {
+    "missingPrintData": "Missing print data",
+    "connectionTimeout": "TCP print connection timeout",
+    "missingPrinterIp": "Missing printer IP address"
   }
 }
 

@@ -3,7 +3,24 @@ const http = require('http');
 const cors = require('cors');
 const iconv = require('iconv-lite');
 
-async function startServer({ configStore, usbManager, tcpPrinterManager, printerMappings, logger }) {
+// i18n will be injected via getI18n parameter
+let getI18n = null;
+
+function setI18n(i18nGetter) {
+  getI18n = i18nGetter;
+}
+
+function t(key, params = {}) {
+  if (!getI18n) return key;
+  const i18n = getI18n();
+  if (!i18n) return key;
+  return i18n.t(key, params);
+}
+
+async function startServer({ configStore, usbManager, tcpPrinterManager, printerMappings, logger, getI18n: i18nGetter }) {
+  if (i18nGetter) {
+    setI18n(i18nGetter);
+  }
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   app.use(
@@ -22,7 +39,7 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
         : [];
       res.json({ status: 'ok', devices, tcpPrinters });
     } catch (err) {
-      logger.error('Health check failed', err);
+      logger.error(t('server.healthCheckFailed'), err);
       res.status(500).json({ status: 'error', message: err.message });
     }
   });
@@ -31,7 +48,7 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
     const { data, encoding, vendorId, productId, text, connectionType = 'usb', ip, host, port } = req.body || {};
     try {
       if (!data && !text) {
-        throw new Error('缺少打印内容');
+        throw new Error(t('server.missingPrintContent'));
       }
       const payload = data
         ? { data, encoding: encoding || 'base64' }
@@ -39,14 +56,14 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
       if (connectionType === 'tcp') {
         const targetHost = host || ip;
         await tcpPrinterManager.print({ ...payload, ip: targetHost, port: port || 9100 });
-        logger.info('TCP print request completed', { host: targetHost, port: port || 9100 });
+        logger.info(t('server.tcpPrintCompleted'), { host: targetHost, port: port || 9100 });
       } else {
         await usbManager.print({ ...payload, vendorId, productId });
-        logger.info('USB print request completed', { vendorId, productId });
+        logger.info(t('server.usbPrintCompleted'), { vendorId, productId });
       }
       res.json({ ok: true });
     } catch (err) {
-      logger.error('Print request failed', { message: err.message, stack: err.stack });
+      logger.error(t('server.printRequestFailed'), { message: err.message, stack: err.stack });
       res.status(500).json({ ok: false, error: err.message });
     }
   });
@@ -57,7 +74,7 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
   await new Promise((resolve, reject) => {
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        const error = new Error(`端口 ${port} 已被占用，可能已有实例在运行`);
+        const error = new Error(t('server.portInUse', { port }));
         error.code = 'EADDRINUSE';
         reject(error);
       } else {
@@ -66,7 +83,7 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
     });
     
     server.listen(port, () => {
-      logger.info('Local agent server listening', { port });
+      logger.info(t('server.listening'), { port });
       resolve();
     });
   });
@@ -81,5 +98,6 @@ async function stopServer(server) {
 
 module.exports = {
   startServer,
-  stopServer
+  stopServer,
+  setI18n
 };

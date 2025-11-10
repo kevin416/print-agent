@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "本地 USB 打印 Agent",
+    "title": "本地 打印 Agent",
     "name": "Yepos Agent"
   },
   "status": {
@@ -50,17 +50,28 @@
       "downloading": "下载中",
       "downloaded": "可安装",
       "error": "出错",
-      "development": "开发模式"
-    },
-    "message": {
-      "notConfigured": "自动更新配置未启用",
-      "disabled": "未设置更新源，关闭自动更新",
-      "development": "开发模式下不执行更新",
-      "notChecked": "尚未检查更新",
-      "cannotCheck": "无法检查更新：{reason}",
-      "cannotStartCheck": "无法启动检查，请确认已经配置更新源。",
-      "noUpdateAvailable": "当前没有可安装的更新，请先检查并下载。"
-    },
+        "development": "开发模式"
+      },
+      "message": {
+        "notConfigured": "自动更新配置未启用",
+        "disabled": "未设置更新源，关闭自动更新",
+        "development": "开发模式下不执行更新",
+        "notChecked": "尚未检测更新",
+        "cannotCheck": "无法检查更新：{reason}",
+        "cannotStartCheck": "无法启动检查，请确认已经配置更新源。",
+        "noUpdateAvailable": "当前没有可安装的更新，请先检查并下载。",
+        "feedUrlNotSet": "未设置更新源",
+        "enabled": "自动更新已启用",
+        "configFailed": "配置自动更新失败",
+        "checking": "正在检查更新…",
+        "updateAvailable": "发现新版本 {version}",
+        "upToDate": "已是最新版本",
+        "error": "自动更新出错",
+        "parseError": "更新源配置错误",
+        "downloading": "正在下载更新…",
+        "downloaded": "更新已下载，准备安装",
+        "checkFailed": "检查更新失败"
+      },
     "feedUrl": "更新源地址",
     "feedUrlPlaceholder": "https://.../updates/local-usb-agent",
     "channel": "更新通道",
@@ -79,12 +90,19 @@
     "status": {
       "disabled": "未启用",
       "idle": "待命",
-      "waiting": "等待配置",
-      "sending": "发送中",
-      "online": "在线",
-      "error": "异常"
-    },
-    "message": "尚未开启心跳上报。",
+        "waiting": "等待配置",
+        "sending": "发送中",
+        "online": "在线",
+        "error": "异常"
+      },
+      "message": {
+        "notEnabled": "尚未开启心跳上报。",
+        "waitingForShopId": "尚未配置分店 Shop ID，无法上报心跳",
+        "missingEndpoint": "未设置上报地址",
+        "heartbeatSent": "心跳已上报",
+        "sendFailed": "心跳发送失败",
+        "serviceStarted": "心跳服务已启动"
+      },
     "enabled": "启用心跳上报",
     "includeLogs": "上传日志尾部",
     "endpoint": "上报地址",
@@ -119,7 +137,9 @@
     "attached": "刚刚接入",
     "detached": "刚刚移除",
     "mayNotBePrinter": "⚠️ 可能不是打印机",
-    "usbDevice": "USB 设备"
+    "usbDevice": "USB 设备",
+    "port": "端口 {path}",
+    "serialNumber": "SN {serial}"
   },
   "history": {
     "title": "打印测试历史",
@@ -134,7 +154,9 @@
     "details": "详情",
     "success": "成功",
     "failed": "失败",
-    "unknown": "未知地址"
+    "unknown": "未知地址",
+    "connectionTypeTcp": "TCP",
+    "connectionTypeUsb": "USB"
   },
   "logs": {
     "title": "日志",
@@ -284,7 +306,47 @@
     "localAgentFailed": "本地代理打印失败",
     "printFailed": "打印失败",
     "missingVendorProduct": "缺少 vendorId / productId",
-    "missingTcpIp": "缺少 TCP 打印机 IP 地址"
+    "missingTcpIp": "缺少 TCP 打印机 IP 地址",
+    "deviceNotFound": "设备未找到",
+    "cannotReadPrinterInterface": "无法读取打印机接口",
+    "noWritableEndpoint": "未找到可写端点",
+    "usbPrinterNotFound": "未找到匹配的 USB 打印机",
+    "closeUsbDeviceFailed": "关闭 USB 设备失败",
+    "releaseInterfaceFailed": "释放接口失败",
+    "closeDeviceFailed": "关闭设备失败",
+    "cannotDetachKernelDriver": "无法卸载内核驱动"
+  },
+  "server": {
+    "missingPrintContent": "缺少打印内容",
+    "portInUse": "端口 {port} 已被占用，可能已有实例在运行",
+    "listening": "本地代理服务器正在监听",
+    "healthCheckFailed": "健康检查失败",
+    "printRequestFailed": "打印请求失败",
+    "tcpPrintCompleted": "TCP 打印请求完成",
+    "usbPrintCompleted": "USB 打印请求完成"
+  },
+  "websocket": {
+    "configUpdated": "配置已更新",
+    "configFailed": "配置失败",
+    "invalidConfig": "无效配置",
+    "registerSkippedNoShopId": "注册跳过：未配置 Shop ID",
+    "registerSent": "WebSocket 注册已发送",
+    "sendFailed": "WebSocket 发送失败",
+    "invalidJson": "接收到无效的 JSON",
+    "remoteDisabled": "远程功能已被配置禁用",
+    "connectSkippedNoShopId": "连接跳过：未配置 Shop ID",
+    "urlNotConfigured": "WebSocket URL 未配置",
+    "connecting": "正在连接 WebSocket",
+    "connected": "WebSocket 已连接",
+    "closed": "WebSocket 已关闭",
+    "error": "WebSocket 错误",
+    "cleanupError": "WebSocket 清理错误",
+    "sendResultFailed": "发送打印结果失败"
+  },
+  "tcp": {
+    "missingPrintData": "缺少打印数据",
+    "connectionTimeout": "TCP 打印连接超时",
+    "missingPrinterIp": "缺少打印机 IP 地址"
   }
 }
 

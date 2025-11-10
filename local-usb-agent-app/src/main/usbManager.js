@@ -4,6 +4,20 @@ const usbEvents = typeof usbModule?.on === 'function' ? usbModule : usbModule?.u
 const iconv = require('iconv-lite');
 const logger = require('./logger');
 
+// i18n will be injected via setI18n function
+let getI18n = null;
+
+function setI18n(i18nGetter) {
+  getI18n = i18nGetter;
+}
+
+function t(key, params = {}) {
+  if (!getI18n) return key;
+  const i18n = getI18n();
+  if (!i18n) return key;
+  return i18n.t(key, params);
+}
+
 const HOTPLUG_WINDOW_MS = 15_000;
 
 const listeners = new Set();
@@ -110,7 +124,7 @@ async function describeDevice(device, { includeStrings = true } = {}) {
       try {
         device.close();
       } catch (err) {
-        logger.warn('关闭 USB 设备失败', err);
+        logger.warn(t('print.closeUsbDeviceFailed'), err);
       }
     }
   }
@@ -192,24 +206,24 @@ function findDevice(match) {
 
 function openDevice(device) {
   if (!device) {
-    throw new Error('设备未找到');
+    throw new Error(t('print.deviceNotFound'));
   }
   device.open();
   const iface = device.interfaces && device.interfaces[0];
   if (!iface) {
-    throw new Error('无法读取打印机接口');
+    throw new Error(t('print.cannotReadPrinterInterface'));
   }
   if (iface.isKernelDriverActive && iface.isKernelDriverActive()) {
     try {
       iface.detachKernelDriver();
     } catch (err) {
-      logger.warn('无法卸载内核驱动', err);
+      logger.warn(t('print.cannotDetachKernelDriver'), err);
     }
   }
   iface.claim();
   const endpoint = iface.endpoints.find((ep) => ep.direction === 'out');
   if (!endpoint) {
-    throw new Error('未找到可写端点');
+    throw new Error(t('print.noWritableEndpoint'));
   }
   return { iface, endpoint };
 }
@@ -229,7 +243,7 @@ async function writeBuffer(device, endpoint, buffer) {
 async function print({ data, encoding = 'base64', vendorId, productId }) {
   const device = findDevice({ vendorId, productId });
   if (!device) {
-    const error = new Error('未找到匹配的 USB 打印机');
+    const error = new Error(t('print.usbPrinterNotFound'));
     error.code = 'USB_NOT_FOUND';
     error.vendorId = vendorId;
     error.productId = productId;
@@ -252,14 +266,14 @@ async function print({ data, encoding = 'base64', vendorId, productId }) {
       try {
         handle.iface.release(true, () => {});
       } catch (err) {
-        logger.warn('释放接口失败', err);
+        logger.warn(t('print.releaseInterfaceFailed'), err);
       }
     }
     if (handle?.device) {
       try {
         handle.device.close();
       } catch (err) {
-        logger.warn('关闭设备失败', err);
+        logger.warn(t('print.closeDeviceFailed'), err);
       }
     }
   }
@@ -351,5 +365,6 @@ module.exports = {
   getDevices,
   print,
   dispose,
-  onHotplug
+  onHotplug,
+  setI18n
 };
