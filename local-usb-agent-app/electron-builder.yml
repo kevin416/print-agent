@@ -56,6 +56,11 @@ nsis:
   # 安装程序和卸载程序图标
   installerIcon: src/assets/icon.ico
   uninstallerIcon: src/assets/icon.ico
+  # 安装前自动关闭正在运行的应用
+  # 这会自动关闭所有名为 "Yepos Agent.exe" 的进程
+  killAll: true
+  # 自定义安装脚本：在安装前关闭应用
+  include: build/installer.nsh
 publish:
   - provider: generic
     url: https://pa.easyify.uk/updates/local-usb-agent
