@@ -35,8 +35,16 @@ if [ -z "$SSH_AUTH_SOCK" ]; then
     fi
 fi
 
-# 使用 SSH ControlMaster 复用连接（可选，进一步优化）
-SSH_OPTS="-o ControlMaster=auto -o ControlPath=~/.ssh/control-%r@%h:%p -o ControlPersist=300"
+# 使用 SSH ControlMaster 复用连接（在 Windows Git Bash 中可能不稳定，检测平台）
+# 在 Windows 上禁用 ControlMaster，避免连接问题
+if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+    # Windows Git Bash - 不使用 ControlMaster
+    SSH_OPTS=""
+    echo "   ⚠️  检测到 Windows 环境，禁用 SSH ControlMaster"
+else
+    # Linux/macOS - 使用 ControlMaster 优化
+    SSH_OPTS="-o ControlMaster=auto -o ControlPath=~/.ssh/control-%r@%h:%p -o ControlPersist=300"
+fi
 
 # 上传文件（使用 SSH 选项）
 echo "📤 上传管理后台文件..."
@@ -66,28 +74,64 @@ else
         
         # 使用 scp 递归上传
         # 先创建远程目录结构
-        ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "mkdir -p ~/print-agent/updates/local-usb-agent/{mac,win,linux,stable}"
+        echo "   创建远程目录..."
+        ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "mkdir -p ~/print-agent/updates/local-usb-agent/mac ~/print-agent/updates/local-usb-agent/win ~/print-agent/updates/local-usb-agent/linux ~/print-agent/updates/local-usb-agent/stable" || {
+            echo "   ❌ 创建远程目录失败"
+            exit 1
+        }
         
-        # 上传文件
+        # 上传文件（逐个上传，避免通配符问题）
         if [ -d "$UPDATES_DIR/local-usb-agent" ]; then
             echo "   上传 Windows 文件..."
             if [ -d "$UPDATES_DIR/local-usb-agent/win" ]; then
-                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/win"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/win/ 2>/dev/null || true
+                for file in "$UPDATES_DIR/local-usb-agent/win"/*; do
+                    if [ -f "$file" ]; then
+                        filename=$(basename "$file")
+                        echo "      → $filename"
+                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/win/ || {
+                            echo "      ❌ 上传失败: $filename"
+                        }
+                    fi
+                done
             fi
             
             echo "   上传 macOS 文件..."
             if [ -d "$UPDATES_DIR/local-usb-agent/mac" ]; then
-                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/mac"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/mac/ 2>/dev/null || true
+                for file in "$UPDATES_DIR/local-usb-agent/mac"/*; do
+                    if [ -f "$file" ]; then
+                        filename=$(basename "$file")
+                        echo "      → $filename"
+                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/mac/ || {
+                            echo "      ❌ 上传失败: $filename"
+                        }
+                    fi
+                done
             fi
             
             echo "   上传 Linux 文件..."
             if [ -d "$UPDATES_DIR/local-usb-agent/linux" ]; then
-                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/linux"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/linux/ 2>/dev/null || true
+                for file in "$UPDATES_DIR/local-usb-agent/linux"/*; do
+                    if [ -f "$file" ]; then
+                        filename=$(basename "$file")
+                        echo "      → $filename"
+                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/linux/ || {
+                            echo "      ❌ 上传失败: $filename"
+                        }
+                    fi
+                done
             fi
             
             echo "   上传稳定通道 YAML 文件..."
             if [ -d "$UPDATES_DIR/local-usb-agent/stable" ]; then
-                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/stable"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/stable/ 2>/dev/null || true
+                for file in "$UPDATES_DIR/local-usb-agent/stable"/*; do
+                    if [ -f "$file" ]; then
+                        filename=$(basename "$file")
+                        echo "      → $filename"
+                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/stable/ || {
+                            echo "      ❌ 上传失败: $filename"
+                        }
+                    fi
+                done
             fi
         fi
         
@@ -161,5 +205,7 @@ echo ""
 echo "✅ Nginx 配置完成！"
 echo ""
 
-# 清理 SSH ControlMaster 连接（可选）
-ssh $SSH_OPTS -O exit $SERVER_USER@$SERVER_HOST 2>/dev/null || true
+# 清理 SSH ControlMaster 连接（仅在非 Windows 环境下）
+if [[ -n "$SSH_OPTS" ]] && [[ "$SSH_OPTS" == *"ControlMaster"* ]]; then
+    ssh $SSH_OPTS -O exit $SERVER_USER@$SERVER_HOST 2>/dev/null || true
+fi
