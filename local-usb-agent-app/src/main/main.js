@@ -14,29 +14,59 @@ const printerMappings = require('./printerMappings');
 const printHistory = require('./printHistory');
 const createWsClient = require('./wsClient');
 
-const ICON_PATH = path.join(__dirname, '../assets/icon-512.svg');
+// 根据平台选择图标文件
+const ICON_PATH_SVG = path.join(__dirname, '../assets/icon-512.svg');
+const ICON_PATH_ICO = path.join(__dirname, '../assets/icon.ico');
+const ICON_PATH = process.platform === 'win32' ? ICON_PATH_ICO : ICON_PATH_SVG;
 const FALLBACK_ICON_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABG0lEQVQ4T6WTQU7DMBREnyCgDaAG0L4EtAcQbKAbwA6gG0AN0BHYBNAcxvWk5t6iIpK1l+RkhcePgjyTn3vnPGzCQlwJ2Y8aKZBEMswaNee5j3FAFSYBEd8sn7jCSoa6k5kBwh7XSwUVccAq1sm49XMwY9+xS3OAAxQyLP2Ni05DyuguSYwhNnhKe2mLUA3F6CrKeNOrP4kM/Cpsb5K60wk0LSdexM0haGMXGhYluuQsoS52sw84pwK1sJdD7ZN0+x93vHAKxOJ5f3i6yQmguSlJ3J6vNEvCYYJdC085nRx2SJdF/Q1FHdgCHZh9twmtIDAD7zNDCDg20xgiVeLtSzdoqQO55IFJGTfg9HvvU6HyEtTT8SYA9TPhnWe0bJIqM9ckRlQYLtY6w/9AcqbTjp3nslAAAAAElFTkSuQmCC';
 
 function loadIcon({ template = false } = {}) {
-  let image = nativeImage.createFromPath(ICON_PATH);
-  if (!image || image.isEmpty()) {
+  let image = null;
+  
+  // Windows 优先使用 ICO 文件
+  if (process.platform === 'win32') {
     try {
-      const svgBuffer = fs.readFileSync(ICON_PATH);
-      image = nativeImage.createFromBuffer(svgBuffer, { scaleFactor: 1 });
+      if (fs.existsSync(ICON_PATH_ICO)) {
+        image = nativeImage.createFromPath(ICON_PATH_ICO);
+        if (image && !image.isEmpty()) {
+          // ICO 文件已经包含多尺寸，直接返回
+          return image;
+        }
+      }
     } catch (error) {
-      image = nativeImage.createFromDataURL(FALLBACK_ICON_DATA_URL);
+      // ICO 加载失败，继续尝试其他格式
     }
   }
-  if ((!image || image.isEmpty()) && FALLBACK_ICON_DATA_URL) {
+  
+  // 尝试加载 SVG 或默认图标
+  try {
+    image = nativeImage.createFromPath(ICON_PATH_SVG);
+    if (!image || image.isEmpty()) {
+      const svgBuffer = fs.readFileSync(ICON_PATH_SVG);
+      image = nativeImage.createFromBuffer(svgBuffer, { scaleFactor: 1 });
+    }
+  } catch (error) {
+    // SVG 加载失败，使用 fallback
+  }
+  
+  if (!image || image.isEmpty()) {
     image = nativeImage.createFromDataURL(FALLBACK_ICON_DATA_URL);
   }
+  
   if (template && process.platform === 'darwin' && !image.isEmpty()) {
     image.setTemplateImage(true);
   }
+  
+  // Windows 上如果使用 SVG，需要 resize（ICO 文件已经包含多尺寸，不需要 resize）
   if (process.platform === 'win32' && !template && !image.isEmpty()) {
-    image = image.resize({ width: 32, height: 32 });
+    // 如果图像尺寸很大（说明可能是 SVG 转换的），需要 resize
+    const size = image.getSize();
+    if (size.width > 64 || size.height > 64) {
+      image = image.resize({ width: 32, height: 32 });
+    }
   }
+  
   return image;
 }
 

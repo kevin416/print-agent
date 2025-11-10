@@ -48,6 +48,40 @@ npm run build
 
 Electron Builder 将输出至 `build/` 目录，对应平台的 DMG/ZIP/NSIS/AppImage 包。
 
+### 清理构建缓存
+
+如果遇到应用名称、图标未更新等问题，可能需要清理构建缓存后重新构建：
+
+**Windows (PowerShell):**
+```powershell
+# 删除构建目录
+Remove-Item -Recurse -Force build
+
+# 清理 electron-builder 缓存（可选）
+Remove-Item -Recurse -Force "$env:USERPROFILE\AppData\Local\electron-builder\Cache" -ErrorAction SilentlyContinue
+
+# 清理 node_modules 中的缓存（可选）
+Remove-Item -Recurse -Force node_modules\.cache -ErrorAction SilentlyContinue
+
+# 重新构建（使用 --clean 参数自动清理）
+npx electron-builder --win --x64 --clean
+```
+
+**macOS/Linux:**
+```bash
+# 删除构建目录
+rm -rf build
+
+# 清理 electron-builder 缓存（可选）
+rm -rf ~/.cache/electron-builder
+
+# 清理 node_modules 中的缓存（可选）
+rm -rf node_modules/.cache
+
+# 重新构建（使用 --clean 参数自动清理）
+npm run build -- --clean
+```
+
 ## 自动更新
 
 - 默认更新源：`https://pa.easyify.uk/updates/local-usb-agent`（可在 UI 中修改）
