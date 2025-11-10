@@ -20,6 +20,24 @@
       justify-content: space-between;
       align-items: center;
     }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header-buttons {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .header-buttons button {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+    .header-buttons button:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
     main {
       padding: 24px;
       display: grid;
@@ -121,6 +139,14 @@
     button.danger {
       background: #f87171;
       color: #fff;
+    }
+    .header-buttons button {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+    .header-buttons button:hover {
+      background: rgba(255, 255, 255, 0.25);
     }
     table {
       width: 100%;
@@ -332,7 +358,13 @@
     <strong>本地 USB 打印 Agent</strong>
     <span id="status-chip" class="status-chip status-offline">状态未知</span>
   </div>
-  <div class="muted" id="status-meta">--</div>
+  <div class="header-actions">
+    <div class="muted" id="status-meta">--</div>
+    <div class="header-buttons">
+      <button class="secondary" id="btn-restart-app">重新启动</button>
+      <button class="danger" id="btn-quit-app">完全退出</button>
+    </div>
+  </div>
 </header>
 <main>
   <section class="card" id="config-card">

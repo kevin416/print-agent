@@ -12,6 +12,8 @@ const logPathLabel = document.getElementById('log-path');
 const updatesFeedUrlInput = document.getElementById('updates-feed-url');
 const updatesChannelSelect = document.getElementById('updates-channel');
 const updatesAutoDownloadToggle = document.getElementById('updates-auto-download');
+const restartButton = document.getElementById('btn-restart-app');
+const quitButton = document.getElementById('btn-quit-app');
 const versionBadge = document.getElementById('version-badge');
 const updateStatusChip = document.getElementById('update-status');
 const updateMessage = document.getElementById('update-message');
@@ -931,6 +933,18 @@ if (autoTestOnAttachToggle) {
 }
 if (hotplugEventsContainer) {
   hotplugEventsContainer.addEventListener('click', handleHotplugAction);
+}
+if (restartButton) {
+  restartButton.addEventListener('click', async () => {
+    if (!confirm('确定要重新启动本地打印 Agent 吗？当前任务将中断。')) return;
+    await window.agent.restartApp();
+  });
+}
+if (quitButton) {
+  quitButton.addEventListener('click', async () => {
+    if (!confirm('确定要完全退出本地打印 Agent？退出后将不再接收打印任务。')) return;
+    await window.agent.quitApp();
+  });
 }
 checkUpdateButton.addEventListener('click', async () => {
   updateStatusChip.textContent = '正在检查';

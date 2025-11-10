@@ -9,7 +9,7 @@ function normaliseEncoding({ data, encoding = 'base64', text }) {
     return data;
   }
   if (typeof text === 'string' && !data) {
-    return iconv.encode(text, 'gbk');
+    return iconv.encode(text, 'gb18030');
   }
   if (!data) {
     throw new Error('缺少打印数据');
@@ -18,7 +18,7 @@ function normaliseEncoding({ data, encoding = 'base64', text }) {
     return Buffer.from(data);
   }
   if (encoding === 'utf8' || encoding === 'utf-8') {
-    return iconv.encode(data, 'gbk');
+    return iconv.encode(data, 'gb18030');
   }
   if (encoding === 'hex') {
     return Buffer.from(data, 'hex');

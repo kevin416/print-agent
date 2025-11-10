@@ -33,7 +33,9 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
       if (!data && !text) {
         throw new Error('缺少打印内容');
       }
-      const payload = data ? { data, encoding: encoding || 'base64' } : { data: iconv.encode(text, 'gbk'), encoding: 'buffer' };
+      const payload = data
+        ? { data, encoding: encoding || 'base64' }
+        : { data: iconv.encode(text, 'gb18030'), encoding: 'buffer' };
       if (connectionType === 'tcp') {
         const targetHost = host || ip;
         await tcpPrinterManager.print({ ...payload, ip: targetHost, port: port || 9100 });

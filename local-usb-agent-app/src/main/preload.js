@@ -25,5 +25,7 @@ contextBridge.exposeInMainWorld('agent', {
   getOnboarding: () => ipcRenderer.invoke('agent:get-onboarding'),
   updateOnboarding: (payload) => ipcRenderer.invoke('agent:update-onboarding', payload),
   onOnboardingUpdated: (listener) => ipcRenderer.on('agent:onboarding-updated', (_event, payload) => listener(payload)),
-  onUsbHotplug: (listener) => ipcRenderer.on('agent:usb-hotplug', (_event, payload) => listener(payload))
+  onUsbHotplug: (listener) => ipcRenderer.on('agent:usb-hotplug', (_event, payload) => listener(payload)),
+  quitApp: () => ipcRenderer.invoke('agent:quit-app'),
+  restartApp: () => ipcRenderer.invoke('agent:restart-app')
 });

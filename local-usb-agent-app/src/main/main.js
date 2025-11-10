@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const iconv = require('iconv-lite');
 const { startServer, stopServer } = require('./server');
 const configStore = require('./store');
@@ -12,6 +13,32 @@ const telemetry = require('./telemetry');
 const printerMappings = require('./printerMappings');
 const printHistory = require('./printHistory');
 const createWsClient = require('./wsClient');
+
+const ICON_PATH = path.join(__dirname, '../assets/icon-512.svg');
+const FALLBACK_ICON_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABG0lEQVQ4T6WTQU7DMBREnyCgDaAG0L4EtAcQbKAbwA6gG0AN0BHYBNAcxvWk5t6iIpK1l+RkhcePgjyTn3vnPGzCQlwJ2Y8aKZBEMswaNee5j3FAFSYBEd8sn7jCSoa6k5kBwh7XSwUVccAq1sm49XMwY9+xS3OAAxQyLP2Ni05DyuguSYwhNnhKe2mLUA3F6CrKeNOrP4kM/Cpsb5K60wk0LSdexM0haGMXGhYluuQsoS52sw84pwK1sJdD7ZN0+x93vHAKxOJ5f3i6yQmguSlJ3J6vNEvCYYJdC085nRx2SJdF/Q1FHdgCHZh9twmtIDAD7zNDCDg20xgiVeLtSzdoqQO55IFJGTfg9HvvU6HyEtTT8SYA9TPhnWe0bJIqM9ckRlQYLtY6w/9AcqbTjp3nslAAAAAElFTkSuQmCC';
+
+function loadIcon({ template = false } = {}) {
+  let image = nativeImage.createFromPath(ICON_PATH);
+  if (!image || image.isEmpty()) {
+    try {
+      const svgBuffer = fs.readFileSync(ICON_PATH);
+      image = nativeImage.createFromBuffer(svgBuffer, { scaleFactor: 1 });
+    } catch (error) {
+      image = nativeImage.createFromDataURL(FALLBACK_ICON_DATA_URL);
+    }
+  }
+  if ((!image || image.isEmpty()) && FALLBACK_ICON_DATA_URL) {
+    image = nativeImage.createFromDataURL(FALLBACK_ICON_DATA_URL);
+  }
+  if (template && process.platform === 'darwin' && !image.isEmpty()) {
+    image.setTemplateImage(true);
+  }
+  if (process.platform === 'win32' && !template && !image.isEmpty()) {
+    image = image.resize({ width: 32, height: 32 });
+  }
+  return image;
+}
 
 let mainWindow = null;
 let tray = null;
@@ -60,7 +87,7 @@ function buildTestPayload({ connectionType = 'usb', vendorId, productId, alias, 
     '打印成功即表示本地代理正常\n\n',
     GS + 'V' + '\x41' + '\x0A'
   ];
-  return iconv.encode(lines.join(''), 'gbk');
+  return iconv.encode(lines.join(''), 'gb18030');
 }
 
 function createWindow() {
@@ -69,6 +96,7 @@ function createWindow() {
     height: 640,
     show: false,
     autoHideMenuBar: true,
+    icon: loadIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -101,9 +129,7 @@ function createWindow() {
 
 function ensureTray() {
   if (tray) return;
-  const icon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABG0lEQVQ4T6WTQU7DMBREnyCgDaAG0L4EtAcQbKAbwA6gG0AN0BHYBNAcxvWk5t6iIpK1l+RkhcePgjyTn3vnPGzCQlwJ2Y8aKZBEMswaNee5j3FAFSYBEd8sn7jCSoa6k5kBwh7XSwUVccAq1sm49XMwY9+xS3OAAxQyLP2Ni05DyuguSYwhNnhKe2mLUA3F6CrKeNOrP4kM/Cpsb5K60wk0LSdexM0haGMXGhYluuQsoS52sw84pwK1sJdD7ZN0+x93vHAKxOJ5f3i6yQmguSlJ3J6vNEvCYYJdC085nRx2SJdF/Q1FHdgCHZh9twmtIDAD7zNDCDg20xgiVeLtSzdoqQO55IFJGTfg9HvvU6HyEtTT8SYA9TPhnWe0bJIqM9ckRlQYLtY6w/9AcqbTjp3nslAAAAAElFTkSuQmCC'
-  );
+  const icon = loadIcon({ template: process.platform === 'darwin' });
   tray = new Tray(icon);
   tray.setToolTip('Local USB Print Agent');
   tray.on('click', () => {
@@ -717,3 +743,16 @@ ipcMain.handle('agent:test-printer', async (_event, payload) => performTestPrint
 ipcMain.handle('agent:test-usb-device', async (_event, payload) =>
   performTestPrint({ ...payload, connectionType: 'usb' })
 );
+
+ipcMain.handle('agent:quit-app', async () => {
+  quitting = true;
+  app.quit();
+  return { ok: true };
+});
+
+ipcMain.handle('agent:restart-app', async () => {
+  quitting = true;
+  app.relaunch();
+  app.exit(0);
+  return { ok: true };
+});

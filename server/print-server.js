@@ -123,7 +123,7 @@ function validatePrintRequest(req, printerHost) {
 function convertToGBK(utf8Buffer) {
   try {
     const textString = utf8Buffer.toString('utf-8')
-    const gbkBuffer = iconv.encode(textString, 'GBK')
+    const gbkBuffer = iconv.encode(textString, 'GB18030')
     return gbkBuffer
   } catch (error) {
     console.error('编码转换失败:', error.message)
@@ -407,8 +407,9 @@ function sendViaLocalAgent(agent, shopName, printerHost, printerPort, utf8Data) 
       taskId: taskId,
       printerIP: printerHost,
       port: printerPort,
-      data: utf8Data.toString('base64'),
-      encoding: 'base64'
+      data: convertToGBK(utf8Data).toString('base64'),
+      encoding: 'base64',
+      charset: 'GB18030'
     }))
     
     console.log(`   🔗 已发送到本地代理: ${taskId}`)

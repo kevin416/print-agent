@@ -5,6 +5,7 @@ const express = require('express')
 const axios = require('axios')
 const fs = require('fs-extra')
 const cors = require('cors')
+const iconv = require('iconv-lite')
 
 const app = express()
 
@@ -719,8 +720,9 @@ app.post('/api/agent-heartbeat/:shopId/test-default', async (req, res) => {
         type: 'print-test',
         payload: {
           printer: printerPayload,
-          data: Buffer.from(payload, 'utf8').toString('base64'),
+          data: iconv.encode(payload, 'gb18030').toString('base64'),
           encoding: 'base64',
+          charset: 'GB18030',
           reason: 'remote-test'
         }
       },

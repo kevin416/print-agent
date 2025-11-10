@@ -239,7 +239,7 @@ async function print({ data, encoding = 'base64', vendorId, productId }) {
     ? data
     : encoding === 'base64'
       ? Buffer.from(data, 'base64')
-      : iconv.encode(data, 'gbk');
+      : iconv.encode(data, 'gb18030');
 
   let handle;
   try {
