@@ -1,3 +1,65 @@
+// Load i18n module
+let i18n = null;
+
+async function initI18n() {
+  if (window.agent && window.agent.getTranslations) {
+    const locale = await window.agent.getLocale();
+    const data = await window.agent.getTranslations(locale);
+    i18n = {
+      t: (key, params) => {
+        const keys = key.split('.');
+        let value = data.translations;
+        for (const k of keys) {
+          if (value && typeof value === 'object' && k in value) {
+            value = value[k];
+          } else {
+            return key;
+          }
+        }
+        if (typeof value !== 'string') return key;
+        if (params && Object.keys(params).length > 0) {
+          return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
+            return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+          });
+        }
+        return value;
+      },
+      getLocale: () => data.locale
+    };
+    
+    // Listen for locale changes
+    window.agent.onLocaleChanged(async (payload) => {
+      const newData = await window.agent.getTranslations(payload.locale);
+      i18n = {
+        t: (key, params) => {
+          const keys = key.split('.');
+          let value = newData.translations;
+          for (const k of keys) {
+            if (value && typeof value === 'object' && k in value) {
+              value = value[k];
+            } else {
+              return key;
+            }
+          }
+          if (typeof value !== 'string') return key;
+          if (params && Object.keys(params).length > 0) {
+            return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
+              return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+            });
+          }
+          return value;
+        },
+        getLocale: () => newData.locale
+      };
+      updateUI();
+    });
+  }
+}
+
+function t(key, params) {
+  return i18n ? i18n.t(key, params) : key;
+}
+
 const statusChip = document.getElementById('status-chip');
 const statusMeta = document.getElementById('status-meta');
 const shopIdInput = document.getElementById('shop-id');
@@ -36,6 +98,7 @@ const telemetryLogContent = document.getElementById('telemetry-log-content');
 const historySummary = document.getElementById('history-summary');
 const historyTableBody = document.getElementById('history-table-body');
 const hotplugEventsContainer = document.getElementById('hotplug-events');
+const languageSelect = document.getElementById('language-select');
 
 const DEFAULT_UPDATE_FEED_URL = 'https://pa.easyify.uk/updates/local-usb-agent';
 const HOTPLUG_HIGHLIGHT_MS = 15000;
@@ -90,105 +153,82 @@ function hasSuccessfulTest() {
   return printHistory.some((item) => item && item.status === 'success');
 }
 
-const onboardingSteps = [
-  {
-    id: 'welcome',
-    title: '欢迎使用本地打印 Agent',
-    subtitle: '我们会引导你完成基础配置与测试，确保门店打印顺畅。',
-    render: () =>
-      `<p>整个流程大约 2~3 分钟，请按提示操作：</p>
-       <ul>
-         <li>绑定分店 Shop ID</li>
-         <li>选择默认打印机并完成测试</li>
-         <li>开启远程监控心跳，便于总部了解代理状态</li>
-       </ul>
-       <p>准备好了就点击「继续」。</p>`,
-    validate: () => true
-  },
-  {
-    id: 'shop',
-    title: '配置分店 Shop ID',
-    subtitle: '绑定 manager_next 的公司/分店 ID，方便系统识别。',
-    render: () => {
-      const value = shopIdInput.value.trim();
-      return `
-        <p>在上方「基础配置」区域输入分店 Shop ID（通常与 manager_next 的 companyId 对应）。</p>
-        <ul>
-          <li>当前输入：<strong>${value || '尚未填写'}</strong></li>
-          <li>填写完成后点击右上角的「保存配置」。</li>
-        </ul>
-      `;
+function getOnboardingSteps() {
+  return [
+    {
+      id: 'welcome',
+      title: t('onboarding.steps.welcome.title'),
+      subtitle: t('onboarding.steps.welcome.subtitle'),
+      render: () => t('onboarding.steps.welcome.content'),
+      validate: () => true
     },
-    validate: () => Boolean(shopIdInput.value.trim()),
-    onBeforeNext: async () => {
-      await saveConfig();
+    {
+      id: 'shop',
+      title: t('onboarding.steps.shop.title'),
+      subtitle: t('onboarding.steps.shop.subtitle'),
+      render: () => {
+        const value = shopIdInput.value.trim();
+        return t('onboarding.steps.shop.content', { value: value || t('common.notSet') });
+      },
+      validate: () => Boolean(shopIdInput.value.trim()),
+      onBeforeNext: async () => {
+        await saveConfig();
+      }
+    },
+    {
+      id: 'default-printer',
+      title: t('onboarding.steps.defaultPrinter.title'),
+      subtitle: t('onboarding.steps.defaultPrinter.subtitle'),
+      render: () => {
+        const mapping = getDefaultPrinterMapping();
+        return t('onboarding.steps.defaultPrinter.content', { printer: mapping ? mapping.key : t('common.notSelected') });
+      },
+      validate: () => Boolean(getDefaultPrinterMapping())
+    },
+    {
+      id: 'test-print',
+      title: t('onboarding.steps.testPrint.title'),
+      subtitle: t('onboarding.steps.testPrint.subtitle'),
+      render: () => {
+        const success = hasSuccessfulTest();
+        const statusText = success ? t('common.ok') + ' ✅' : t('common.notConfigured');
+        return t('onboarding.steps.testPrint.content', { status: statusText });
+      },
+      validate: () => hasSuccessfulTest()
+    },
+    {
+      id: 'telemetry',
+      title: t('onboarding.steps.telemetry.title'),
+      subtitle: t('onboarding.steps.telemetry.subtitle'),
+      render: () => {
+        const statusText = telemetryEnabledToggle.checked ? t('common.ok') + ' ✅' : t('common.notConfigured');
+        return t('onboarding.steps.telemetry.content', { status: statusText });
+      },
+      validate: () => telemetryEnabledToggle.checked,
+      onBeforeNext: async () => {
+        await saveConfig();
+      }
     }
-  },
-  {
-    id: 'default-printer',
-    title: '设置默认打印机',
-    subtitle: '为门店选择一台默认使用的 USB 打印机。',
-    render: () => {
-      const mapping = getDefaultPrinterMapping();
-      return `
-        <p>在「USB 设备映射」列表中，为需要使用的打印机勾选「默认」并填写备注/用途。</p>
-        <ul>
-          <li>提示：可以根据用途选择 Kitchen / FrontDesk / Receipt 等角色。</li>
-          <li>当前默认打印机：<strong>${mapping ? mapping.key : '尚未选择'}</strong></li>
-        </ul>
-      `;
-    },
-    validate: () => Boolean(getDefaultPrinterMapping())
-  },
-  {
-    id: 'test-print',
-    title: '完成测试打印',
-    subtitle: '确认默认打印机可以正常出纸。',
-    render: () => {
-      const success = hasSuccessfulTest();
-      return `
-        <p>点击设备列表中的「测试打印」按钮（或托盘菜单里的「测试默认打印机」），确保打印机能正常出纸。</p>
-        <ul>
-          <li>建议使用纸张观察是否打印出“测试打印任务”内容。</li>
-          <li>当前状态：<strong>${success ? '已检测到成功测试 ✅' : '尚未检测到成功测试'}</strong></li>
-        </ul>
-      `;
-    },
-    validate: () => hasSuccessfulTest()
-  },
-  {
-    id: 'telemetry',
-    title: '开启远程监控',
-    subtitle: '让总部及时了解门店代理状态，快速支援。',
-    render: () => `
-        <p>在「远程监控」中勾选「启用心跳上报」与「上传日志尾部」，确认上报地址正确。</p>
-        <ul>
-          <li>完成后可点击「立即同步」查看是否显示为「在线」。</li>
-          <li>当前状态：<strong>${telemetryEnabledToggle.checked ? '已开启 ✅' : '尚未开启'}</strong></li>
-        </ul>
-      `,
-    validate: () => telemetryEnabledToggle.checked,
-    onBeforeNext: async () => {
-      await saveConfig();
-    }
-  }
-];
+  ];
+}
 
 function renderOnboardingContent() {
   if (!onboardingState.visible) return;
-  const step = onboardingSteps[onboardingState.currentStep];
+  const steps = getOnboardingSteps();
+  const step = steps[onboardingState.currentStep];
   const body = step.render ? step.render() : step.body || '';
   onboardingBody.innerHTML = body;
 }
 
 function renderOnboardingStep() {
   if (!onboardingState.visible) return;
-  const step = onboardingSteps[onboardingState.currentStep];
+  const steps = getOnboardingSteps();
+  const step = steps[onboardingState.currentStep];
   onboardingTitle.textContent = step.title;
   onboardingSubtitle.textContent = step.subtitle || '';
   btnOnboardingPrev.style.display = onboardingState.currentStep > 0 ? 'inline-flex' : 'none';
   btnOnboardingNext.textContent =
-    onboardingState.currentStep === onboardingSteps.length - 1 ? '完成' : '继续';
+    onboardingState.currentStep === steps.length - 1 ? t('onboarding.finish') : t('onboarding.next');
   renderOnboardingContent();
   updateOnboardingUI();
 }
@@ -198,7 +238,8 @@ function updateOnboardingUI(options = {}) {
   if (options.rerender) {
     renderOnboardingContent();
   }
-  const step = onboardingSteps[onboardingState.currentStep];
+  const steps = getOnboardingSteps();
+  const step = steps[onboardingState.currentStep];
   const valid = step.validate ? step.validate() : true;
   btnOnboardingNext.disabled = !valid;
 }
@@ -219,7 +260,8 @@ function closeOnboarding() {
 }
 
 async function goToOnboardingStep(index, options = {}) {
-  const target = Math.max(0, Math.min(onboardingSteps.length - 1, index));
+  const steps = getOnboardingSteps();
+  const target = Math.max(0, Math.min(steps.length - 1, index));
   onboardingState.currentStep = target;
   if (!options.skipPersist) {
     await window.agent.updateOnboarding({ lastStep: target });
@@ -246,7 +288,8 @@ function handleOnboardingData(data) {
     closeOnboarding();
     return;
   }
-  const targetStep = Math.max(0, Math.min(onboardingSteps.length - 1, data?.lastStep || 0));
+  const steps = getOnboardingSteps();
+  const targetStep = Math.max(0, Math.min(steps.length - 1, data?.lastStep || 0));
   onboardingState.currentStep = targetStep;
   openOnboarding();
 }
@@ -312,11 +355,11 @@ async function refreshStatus() {
 
 function renderStatus({ config, devices, server, autoLaunch, update, telemetry }) {
   const online = server.running;
-  statusChip.textContent = online ? '运行中' : '未启动';
+  statusChip.textContent = online ? t('status.running') : t('status.stopped');
   statusChip.classList.toggle('status-online', online);
   statusChip.classList.toggle('status-offline', !online);
   const tcpCount = Array.isArray(currentTcpPrinters) ? currentTcpPrinters.length : 0;
-  statusMeta.textContent = `HTTP 服务端口 ${server.port} · USB 设备 ${devices.length} 台 · TCP 打印机 ${tcpCount} 台 · 自动启动 ${autoLaunch ? '已开启' : '未开启'}`;
+  statusMeta.textContent = `${t('common.httpService', { port: server.port })} · ${t('common.usbDevices', { count: devices.length })} · ${t('common.tcpPrinters', { count: tcpCount })} · ${t('config.autostart')} ${autoLaunch ? t('common.autoStartEnabled') : t('common.autoStartDisabled')}`;
 
   shopIdInput.value = config.shopId || '';
   serverPortInput.value = config.server?.port || 40713;
@@ -370,19 +413,19 @@ function renderUpdateState(update = {}) {
   currentUpdateState = update;
   const status = update.status || (update.enabled ? 'idle' : 'disabled');
   const statusLabelMap = {
-    idle: '待命',
-    disabled: '未启用',
-    checking: '正在检查',
-    available: '发现更新',
-    downloading: '下载中',
-    downloaded: '可安装',
-    error: '出错',
-    development: '开发模式'
+    idle: t('updates.status.idle'),
+    disabled: t('updates.status.disabled'),
+    checking: t('updates.status.checking'),
+    available: t('updates.status.available'),
+    downloading: t('updates.status.downloading'),
+    downloaded: t('updates.status.downloaded'),
+    error: t('updates.status.error'),
+    development: t('updates.status.development')
   };
   const statusClassOnline = ['available', 'downloading', 'downloaded'];
   const statusClassOffline = ['error', 'disabled'];
 
-  versionBadge.textContent = `v${update.currentVersion || '0.0.0'}`;
+  versionBadge.textContent = t('updates.version', { version: update.currentVersion || '0.0.0' });
   updateStatusChip.classList.remove('status-online', 'status-offline');
   updateStatusChip.textContent = statusLabelMap[status] || status;
   updateStatusChip.classList.toggle('status-online', statusClassOnline.includes(status));
@@ -391,12 +434,12 @@ function renderUpdateState(update = {}) {
   const message =
     update.message ||
     (status === 'disabled'
-      ? '未设置更新源，关闭自动更新'
+      ? t('updates.message.disabled')
       : status === 'development'
-        ? '开发模式下不执行更新'
-        : '尚未检查更新');
+        ? t('updates.message.development')
+        : t('updates.message.notChecked'));
   updateMessage.textContent = message;
-  updateLastChecked.textContent = update.lastCheckedAt ? `最近检查：${formatTimestamp(update.lastCheckedAt)}` : '最近检查：--';
+  updateLastChecked.textContent = update.lastCheckedAt ? t('updates.lastChecked', { time: formatTimestamp(update.lastCheckedAt) }) : t('updates.lastChecked', { time: '--' });
 
   const showProgress = status === 'downloading' && update.progress;
   updateProgressBlock.style.display = showProgress ? 'block' : 'none';
@@ -405,7 +448,7 @@ function renderUpdateState(update = {}) {
     updateProgressFill.style.width = `${percent.toFixed(1)}%`;
     const transferredMb = update.progress.transferred ? (update.progress.transferred / 1024 / 1024).toFixed(1) : '0';
     const totalMb = update.progress.total ? (update.progress.total / 1024 / 1024).toFixed(1) : '0';
-    updateProgressLabel.textContent = `下载进度 ${percent.toFixed(1)}% (${transferredMb} / ${totalMb} MB)`;
+    updateProgressLabel.textContent = t('updates.progressPercent', { percent: percent.toFixed(1), transferred: transferredMb, total: totalMb });
   }
 
   const releaseNotes = update.releaseNotes || update.releaseName;
@@ -421,15 +464,15 @@ function formatRelativeTime(isoString) {
   const target = new Date(isoString).getTime();
   if (Number.isNaN(target)) return isoString;
   const diff = Date.now() - target;
-  if (diff < 0) return '刚刚';
+  if (diff < 0) return t('common.justNow', {});
   const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return `${seconds} 秒前`;
+  if (seconds < 60) return t('common.secondsAgo', { count: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 60) return t('common.minutesAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t('common.hoursAgo', { count: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} 天前`;
+  if (days < 7) return t('common.daysAgo', { count: days });
   return new Date(isoString).toLocaleString();
 }
 
@@ -437,12 +480,12 @@ function renderTelemetryState(state = {}) {
   currentTelemetryState = state;
   const status = state.status || 'disabled';
   const statusLabel = {
-    disabled: '未启用',
-    idle: '待命',
-    waiting: '等待配置',
-    sending: '发送中',
-    online: '在线',
-    error: '异常'
+    disabled: t('telemetry.status.disabled'),
+    idle: t('telemetry.status.idle'),
+    waiting: t('telemetry.status.waiting'),
+    sending: t('telemetry.status.sending'),
+    online: t('telemetry.status.online'),
+    error: t('telemetry.status.error')
   }[status] || status;
 
   telemetryStatusChip.classList.remove('status-online', 'status-offline');
@@ -452,11 +495,11 @@ function renderTelemetryState(state = {}) {
   telemetryStatusChip.classList.toggle('status-online', isOnline);
   telemetryStatusChip.classList.toggle('status-offline', isError || status === 'disabled');
 
-  telemetryMessage.textContent = state.message || '尚未开启心跳上报。';
+  telemetryMessage.textContent = state.message || t('telemetry.message');
   telemetryLastSync.textContent = state.lastSuccessAt
-    ? `最后成功：${formatRelativeTime(state.lastSuccessAt)}`
-    : '最后成功：--';
-  telemetryNextSync.textContent = state.nextPlannedAt ? `下次心跳：${formatRelativeTime(state.nextPlannedAt)}` : '下次心跳：--';
+    ? t('telemetry.lastSuccess', { time: formatRelativeTime(state.lastSuccessAt) })
+    : t('telemetry.lastSuccess', { time: '--' });
+  telemetryNextSync.textContent = state.nextPlannedAt ? t('telemetry.nextSync', { time: formatRelativeTime(state.nextPlannedAt) }) : t('telemetry.nextSync', { time: '--' });
 
   if (Array.isArray(state.lastLogs) && state.lastLogs.length > 0) {
     telemetryLogPreview.style.display = 'block';
@@ -475,7 +518,7 @@ function renderDevices() {
     const td = document.createElement('td');
     td.colSpan = 8;
     td.className = 'muted';
-    td.textContent = '未检测到 USB 设备';
+    td.textContent = t('devices.noDevices');
     emptyRow.appendChild(td);
     deviceTable.appendChild(emptyRow);
     updateOnboardingUI({ rerender: true });
@@ -511,12 +554,12 @@ function renderDevices() {
       : '';
     const printerWarning =
       device.isPrinter === false
-        ? '<div class="device-warning">⚠️ 可能不是打印机</div>'
+        ? `<div class="device-warning">${t('devices.mayNotBePrinter')}</div>`
         : '';
     const deviceLabel =
       device.productName ||
       device.deviceName ||
-      `USB 设备 (VID 0x${device.vendorId?.toString(16) ?? '--'} · PID 0x${device.productId?.toString(16) ?? '--'})`;
+      `${t('devices.usbDevice')} (VID 0x${device.vendorId?.toString(16) ?? '--'} · PID 0x${device.productId?.toString(16) ?? '--'})`;
 
     tr.innerHTML = `
       <td class="device-cell">
@@ -536,7 +579,7 @@ function renderDevices() {
     const aliasInput = document.createElement('input');
     aliasInput.type = 'text';
     aliasInput.value = aliasValue;
-    aliasInput.placeholder = '备注、位置等';
+    aliasInput.placeholder = t('devices.aliasPlaceholder');
     aliasInput.addEventListener('change', async () => {
       await window.agent.updatePrinterMapping({
         key,
@@ -587,7 +630,7 @@ function renderDevices() {
 
     const testButton = document.createElement('button');
     testButton.className = 'secondary';
-    testButton.textContent = '测试打印';
+    testButton.textContent = t('devices.testPrint');
     const actionsCell = tr.querySelector('.actions-cell');
     actionsCell.appendChild(testButton);
 
@@ -595,18 +638,18 @@ function renderDevices() {
     function renderStatusCell(map, eventMarker) {
       const eventHtml = eventMarker
         ? `<div class="status-hotplug status-hotplug-${eventMarker.type}">${
-            eventMarker.type === 'attach' ? '刚刚接入' : '刚刚移除'
+            eventMarker.type === 'attach' ? t('devices.attached') : t('devices.detached')
           }</div>`
         : '';
       const lastTest = map.lastTest;
       if (!lastTest) {
-        statusCell.innerHTML = `${eventHtml}<span class="muted">未测试</span>`;
+        statusCell.innerHTML = `${eventHtml}<span class="muted">${t('devices.notTested')}</span>`;
         return;
       }
       const statusClass = lastTest.status === 'success' ? 'history-status-success' : 'history-status-error';
       statusCell.innerHTML = `
         ${eventHtml}
-        <div class="${statusClass}">${lastTest.status === 'success' ? '成功' : '失败'}</div>
+        <div class="${statusClass}">${lastTest.status === 'success' ? t('devices.success') : t('devices.failed')}</div>
         <div class="muted">${formatRelativeTime(lastTest.timestamp)}</div>
         <div class="muted" style="max-width:180px;">${lastTest.message || ''}</div>
       `;
@@ -615,7 +658,7 @@ function renderDevices() {
 
     testButton.addEventListener('click', async () => {
       testButton.disabled = true;
-      testButton.textContent = '测试中...';
+      testButton.textContent = t('devices.testing');
       const result = await window.agent.testPrinter({
         connectionType: 'usb',
         vendorId: device.vendorId,
@@ -625,19 +668,19 @@ function renderDevices() {
       });
       if (result?.ok) {
         statusCell.innerHTML = `
-          <div class="history-status-success">成功</div>
+          <div class="history-status-success">${t('devices.success')}</div>
           <div class="muted">${new Date().toLocaleTimeString()}</div>
-          <div class="muted">测试打印成功</div>
+          <div class="muted">${t('devices.testPrint')} ${t('devices.success')}</div>
         `;
       } else {
         statusCell.innerHTML = `
-          <div class="history-status-error">失败</div>
-          <div class="muted">${result?.error || '打印失败'}</div>
+          <div class="history-status-error">${t('devices.failed')}</div>
+          <div class="muted">${result?.error || t('devices.failed')}</div>
         `;
       }
       setTimeout(() => {
         testButton.disabled = false;
-        testButton.textContent = '测试打印';
+        testButton.textContent = t('devices.testPrint');
       }, 1000);
     });
 
@@ -649,17 +692,17 @@ function renderDevices() {
 function renderHotplugEvents() {
   if (!hotplugEventsContainer) return;
   if (!hotplugEvents.length) {
-    hotplugEventsContainer.innerHTML = '<div class="muted">暂无最新事件</div>';
+    hotplugEventsContainer.innerHTML = `<div class="muted">${t('hotplug.noEvents')}</div>`;
     return;
   }
   const items = hotplugEvents.slice(0, 5).map((entry) => {
     const device = entry.device || {};
     const typeLabel =
-      entry.type === 'attach' ? '设备接入' : entry.type === 'detach' ? '设备移除' : '事件';
+      entry.type === 'attach' ? t('hotplug.deviceAttached') : entry.type === 'detach' ? t('hotplug.deviceDetached') : t('hotplug.event');
     const productLabel =
       device.productName ||
       device.deviceName ||
-      `USB 设备 (VID 0x${Number(device.vendorId || 0).toString(16)} · PID 0x${Number(device.productId || 0).toString(16)})`;
+      `${t('devices.usbDevice')} (VID 0x${Number(device.vendorId || 0).toString(16)} · PID 0x${Number(device.productId || 0).toString(16)})`;
     const metaParts = [];
     if (device.manufacturerName) {
       metaParts.push(device.manufacturerName);
@@ -671,16 +714,16 @@ function renderHotplugEvents() {
       metaParts.push(`PID 0x${Number(device.productId).toString(16)}`);
     }
     if (device.portPath) {
-      metaParts.push(`端口 ${device.portPath}`);
+      metaParts.push(`${t('hotplug.port')} ${device.portPath}`);
     }
     const meta = metaParts.filter(Boolean).join(' · ');
     let autoTestHtml = '';
     if (entry.autoTest) {
       if (entry.autoTest.status === 'running') {
-        autoTestHtml = '<div class="hotplug-meta">自动测试中...</div>';
+        autoTestHtml = `<div class="hotplug-meta">${t('hotplug.testing')}</div>`;
       } else {
         const cls = entry.autoTest.status === 'success' ? 'history-status-success' : 'history-status-error';
-        const label = entry.autoTest.status === 'success' ? '自动测试成功' : `自动测试失败：${escapeHtml(entry.autoTest.message || '')}`;
+        const label = entry.autoTest.status === 'success' ? t('hotplug.testSuccess') : `${t('hotplug.testFailed')}：${escapeHtml(entry.autoTest.message || '')}`;
         autoTestHtml = `<div class="hotplug-meta"><span class="${cls}">${label}</span></div>`;
       }
     }
@@ -689,7 +732,7 @@ function renderHotplugEvents() {
         ? `<div class="hotplug-actions">
              <button class="secondary hotplug-test-btn" data-vendor="${Number(device.vendorId)}" data-product="${Number(
             device.productId
-          )}">测试打印</button>
+          )}">${t('hotplug.testPrint')}</button>
            </div>`
         : '';
 
@@ -711,11 +754,11 @@ function renderHotplugEvents() {
 
 function renderPrintHistory() {
   if (!historyTableBody || !historySummary) return;
-  historySummary.textContent = `最近 ${printHistory.length} 条记录`;
+  historySummary.textContent = t('history.summary', { count: printHistory.length });
 
   if (!printHistory.length) {
     historyTableBody.innerHTML =
-      '<tr><td colspan="5" style="color:#64748b;text-align:center;padding:16px;">暂无测试记录</td></tr>';
+      `<tr><td colspan="5" style="color:#64748b;text-align:center;padding:16px;">${t('history.noRecords')}</td></tr>`;
     updateOnboardingUI({ rerender: true });
     return;
   }
@@ -726,7 +769,7 @@ function renderPrintHistory() {
       const statusClass = record.status === 'success' ? 'history-status-success' : 'history-status-error';
       const deviceLabel =
         record.connectionType === 'tcp'
-          ? `${record.ip || record.host || '未知地址'}:${record.port || 9100} · TCP`
+          ? `${record.ip || record.host || t('history.unknown')}:${record.port || 9100} · TCP`
           : `VID_0x${Number(record.vendorId || 0).toString(16)} · PID_0x${Number(record.productId || 0).toString(16)} · USB`;
       const aliasLabel = [record.alias || '', record.role || ''].filter(Boolean).join(' / ') || '--';
       return `
@@ -734,7 +777,7 @@ function renderPrintHistory() {
           <td>${formatTimestamp(record.timestamp)}</td>
           <td>${deviceLabel}</td>
           <td>${aliasLabel}</td>
-          <td class="${statusClass}">${record.status === 'success' ? '成功' : '失败'}</td>
+          <td class="${statusClass}">${record.status === 'success' ? t('history.success') : t('history.failed')}</td>
           <td>${record.message || ''}</td>
         </tr>
       `;
@@ -894,8 +937,8 @@ async function refreshDevices() {
 
 async function refreshLogs() {
   const { logPath, recent } = await window.agent.getLogs();
-  logPathLabel.textContent = `日志文件：${logPath}`;
-  logViewer.textContent = recent && recent.length ? recent.join('\n') : '尚无日志';
+  logPathLabel.textContent = t('logs.path', { path: logPath });
+  logViewer.textContent = recent && recent.length ? recent.join('\n') : t('logs.noLogs');
 }
 
 async function refreshHistory() {
@@ -936,42 +979,42 @@ if (hotplugEventsContainer) {
 }
 if (restartButton) {
   restartButton.addEventListener('click', async () => {
-    if (!confirm('确定要重新启动本地打印 Agent 吗？当前任务将中断。')) return;
+    if (!confirm(t('dialogs.restartConfirm'))) return;
     await window.agent.restartApp();
   });
 }
 if (quitButton) {
   quitButton.addEventListener('click', async () => {
-    if (!confirm('确定要完全退出本地打印 Agent？退出后将不再接收打印任务。')) return;
+    if (!confirm(t('dialogs.quitConfirm'))) return;
     await window.agent.quitApp();
   });
 }
 checkUpdateButton.addEventListener('click', async () => {
-  updateStatusChip.textContent = '正在检查';
+  updateStatusChip.textContent = t('updates.status.checking');
   updateStatusChip.classList.remove('status-offline');
   updateStatusChip.classList.add('status-online');
   const result = await window.agent.checkUpdates();
   if (!result?.started) {
     updateMessage.textContent = result?.reason
-      ? `无法检查更新：${result.reason}`
-      : '无法启动检查，请确认已经配置更新源。';
+      ? t('updates.message.cannotCheck', { reason: result.reason })
+      : t('updates.message.cannotStartCheck');
   }
 });
 installUpdateButton.addEventListener('click', async () => {
   const result = await window.agent.installUpdate();
   if (!result?.ok) {
-    updateMessage.textContent = '当前没有可安装的更新，请先检查并下载。';
+    updateMessage.textContent = t('updates.message.noUpdateAvailable');
   }
 });
 window.agent.onUpdateStatus((payload) => renderUpdateState(payload));
 sendHeartbeatButton.addEventListener('click', async () => {
-  telemetryStatusChip.textContent = '发送中';
+  telemetryStatusChip.textContent = t('telemetry.status.sending');
   telemetryStatusChip.classList.add('status-online');
   telemetryStatusChip.classList.remove('status-offline');
   const result = await window.agent.sendTelemetry();
   if (!result?.sent) {
     telemetryMessage.textContent =
-      result?.error || result?.reason ? `发送失败：${result.error || result.reason}` : '发送失败';
+      result?.error || result?.reason ? t('telemetry.sendFailed', { error: result.error || result.reason }) : t('telemetry.sendFailedGeneric');
   }
 });
 window.agent.onTelemetryStatus((payload) => {
@@ -1000,7 +1043,7 @@ window.agent.onOnboardingUpdated((payload) => {
 shopIdInput.addEventListener('input', () => updateOnboardingUI({ rerender: true }));
 telemetryEnabledToggle.addEventListener('change', () => updateOnboardingUI({ rerender: true }));
 btnOnboardingSkip.addEventListener('click', async () => {
-  if (!confirm('确定要跳过引导吗？可以稍后在设置中重新打开。')) return;
+  if (!confirm(t('onboarding.skipConfirm'))) return;
   await completeOnboarding(true);
 });
 btnOnboardingPrev.addEventListener('click', () => {
@@ -1009,7 +1052,8 @@ btnOnboardingPrev.addEventListener('click', () => {
   }
 });
 btnOnboardingNext.addEventListener('click', async () => {
-  const step = onboardingSteps[onboardingState.currentStep];
+  const steps = getOnboardingSteps();
+  const step = steps[onboardingState.currentStep];
   if (step.onBeforeNext) {
     const result = await step.onBeforeNext();
     if (result === false) {
@@ -1017,15 +1061,141 @@ btnOnboardingNext.addEventListener('click', async () => {
       return;
     }
   }
-  if (onboardingState.currentStep === onboardingSteps.length - 1) {
+  if (onboardingState.currentStep === steps.length - 1) {
     await completeOnboarding(false);
   } else {
     await goToOnboardingStep(onboardingState.currentStep + 1);
   }
 });
 
-refreshStatus().then(() => {
+// Language switcher
+if (languageSelect) {
+  languageSelect.addEventListener('change', async (e) => {
+    const locale = e.target.value;
+    await window.agent.setLocale(locale);
+    await updateUI();
+  });
+}
+
+// Update all UI elements with translations
+async function updateUI() {
+  if (!i18n) return;
+  
+  // Update header
+  document.querySelector('header strong').textContent = t('app.title');
+  if (restartButton) restartButton.textContent = t('header.restart');
+  if (quitButton) quitButton.textContent = t('header.quit');
+  
+  // Update config section
+  document.querySelector('#config-card h2').textContent = t('config.title');
+  if (saveButton) saveButton.textContent = t('config.save');
+  if (refreshButton) refreshButton.textContent = t('config.refresh');
+  document.querySelector('label[for="shop-id"]').textContent = t('config.shopId');
+  shopIdInput.placeholder = t('config.shopIdPlaceholder');
+  document.querySelector('label[for="server-port"]').textContent = t('config.serverPort');
+  document.querySelector('label[for="autostart-toggle"]').textContent = t('config.autostart');
+  document.querySelector('label[for="allow-self-signed"]').textContent = t('config.allowSelfSigned');
+  if (backgroundModeToggle) {
+    document.querySelector('label[for="background-mode-toggle"]').textContent = t('config.runInBackground');
+  }
+  if (autoTestOnAttachToggle) {
+    document.querySelector('label[for="auto-test-on-attach"]').textContent = t('config.autoTestOnAttach');
+  }
+  
+  // Update hotplug section
+  document.querySelector('#hotplug-card h2').textContent = t('hotplug.title');
+  document.querySelector('#hotplug-card .muted').textContent = t('hotplug.recentEvents');
+  
+  // Update updates section
+  document.querySelector('#updater-card h2').textContent = t('updates.title');
+  document.querySelector('label[for="updates-feed-url"]').textContent = t('updates.feedUrl');
+  updatesFeedUrlInput.placeholder = t('updates.feedUrlPlaceholder');
+  document.querySelector('label[for="updates-channel"]').textContent = t('updates.channel');
+  updatesChannelSelect.querySelector('option[value="stable"]').textContent = t('updates.channelStable');
+  updatesChannelSelect.querySelector('option[value="beta"]').textContent = t('updates.channelBeta');
+  document.querySelector('label[for="updates-auto-download"]').textContent = t('updates.autoDownload');
+  if (checkUpdateButton) checkUpdateButton.textContent = t('updates.checkUpdate');
+  if (installUpdateButton) installUpdateButton.textContent = t('updates.installUpdate');
+  document.querySelector('#update-release-notes summary').textContent = t('updates.releaseNotes');
+  
+  // Update telemetry section
+  document.querySelector('#telemetry-card h2').textContent = t('telemetry.title');
+  document.querySelector('label[for="telemetry-enabled"]').textContent = t('telemetry.enabled');
+  document.querySelector('label[for="telemetry-include-logs"]').textContent = t('telemetry.includeLogs');
+  document.querySelector('label[for="telemetry-endpoint"]').textContent = t('telemetry.endpoint');
+  telemetryEndpointInput.placeholder = t('telemetry.endpointPlaceholder');
+  document.querySelector('label[for="telemetry-interval"]').textContent = t('telemetry.interval');
+  if (sendHeartbeatButton) sendHeartbeatButton.textContent = t('telemetry.sendNow');
+  document.querySelector('#telemetry-log-preview summary').textContent = t('telemetry.recentLogs');
+  
+  // Update devices section
+  const devicesSection = document.querySelector('section:has(#device-table)');
+  if (devicesSection) {
+    const devicesHeading = devicesSection.querySelector('h2');
+    if (devicesHeading) devicesHeading.textContent = t('devices.title');
+    const devicesDesc = devicesSection.querySelector('.muted');
+    if (devicesDesc) devicesDesc.textContent = t('devices.description');
+  }
+  if (refreshDevicesButton) refreshDevicesButton.textContent = t('devices.refresh');
+  const deviceTableHeaders = document.querySelectorAll('#device-table thead th');
+  if (deviceTableHeaders.length >= 8) {
+    deviceTableHeaders[0].textContent = t('devices.device');
+    deviceTableHeaders[1].textContent = t('devices.vendorId');
+    deviceTableHeaders[2].textContent = t('devices.productId');
+    deviceTableHeaders[3].textContent = t('devices.alias');
+    deviceTableHeaders[4].textContent = t('devices.role');
+    deviceTableHeaders[5].textContent = t('devices.default');
+    deviceTableHeaders[6].textContent = t('devices.actions');
+    deviceTableHeaders[7].textContent = t('devices.status');
+  }
+  
+  // Update history section
+  document.querySelector('#history-card h2').textContent = t('history.title');
+  if (refreshHistoryButton) refreshHistoryButton.textContent = t('history.refresh');
+  if (clearHistoryButton) clearHistoryButton.textContent = t('history.clear');
+  const historyTableHeaders = document.querySelectorAll('.history-table thead th');
+  if (historyTableHeaders.length >= 5) {
+    historyTableHeaders[0].textContent = t('history.time');
+    historyTableHeaders[1].textContent = t('history.device');
+    historyTableHeaders[2].textContent = t('history.aliasRole');
+    historyTableHeaders[3].textContent = t('history.status');
+    historyTableHeaders[4].textContent = t('history.details');
+  }
+  
+  // Update logs section
+  const logsSection = document.querySelector('section:has(#log-viewer)');
+  if (logsSection) {
+    const logsHeading = logsSection.querySelector('h2');
+    if (logsHeading) logsHeading.textContent = t('logs.title');
+  }
+  if (refreshLogsButton) refreshLogsButton.textContent = t('logs.refresh');
+  
+  // Update onboarding
+  if (btnOnboardingSkip) btnOnboardingSkip.textContent = t('onboarding.skip');
+  if (btnOnboardingPrev) btnOnboardingPrev.textContent = t('onboarding.prev');
+  if (btnOnboardingNext) btnOnboardingNext.textContent = t('onboarding.next');
+  
+  // Re-render dynamic content
+  renderStatus({ config: currentConfig, devices: currentDevices, server: { port: currentConfig.server?.port || 40713, running: true }, autoLaunch: currentConfig.preferences?.autoLaunch, update: currentUpdateState, telemetry: currentTelemetryState });
+  renderDevices();
   renderPrintHistory();
-  refreshLogs();
+  renderHotplugEvents();
+  renderOnboardingStep();
+}
+
+// Initialize i18n and load UI
+initI18n().then(() => {
+  refreshStatus().then(() => {
+    renderPrintHistory();
+    refreshLogs();
+    updateUI();
+  });
+  renderHotplugEvents();
+  
+  // Load current locale for language selector
+  if (languageSelect && window.agent) {
+    window.agent.getLocale().then((locale) => {
+      languageSelect.value = locale;
+    });
+  }
 });
-renderHotplugEvents();

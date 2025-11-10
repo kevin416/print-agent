@@ -623,7 +623,7 @@ ID服务器: 90.195.120.165:21116
                             <strong>WSL / Linux</strong>
                             <span style="font-size:12px;color:#6b7280;">默认部署脚本</span>
                         </div>
-                        <div class="deploy-command">
+                <div class="deploy-command">
                             <button class="copy-btn" onclick="copyDeployCommand(event, 'wsl')">复制</button>
                             <div id="deployCommandWsl" style="padding-right: 80px;">加载中...</div>
                         </div>
@@ -1636,7 +1636,7 @@ ID服务器: 90.195.120.165:21116
                     if (wslCommand) {
                         wslEl.textContent = wslCommand;
                         wslEl.dataset.command = wslCommand;
-                    } else {
+                } else {
                         wslEl.textContent = '未提供部署命令';
                     }
 
@@ -1671,20 +1671,20 @@ ID服务器: 90.195.120.165:21116
                 showToast('命令尚未加载完成', 'error');
                 return;
             }
-
-            const btn = event ? event.target : document.querySelector('#deployModal .copy-btn');
+            
+                    const btn = event ? event.target : document.querySelector('#deployModal .copy-btn');
 
             const handleSuccess = () => {
-                if (btn) {
-                    const originalText = btn.textContent;
-                    btn.textContent = '已复制!';
-                    btn.classList.add('copied');
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.classList.remove('copied');
-                    }, 2000);
-                }
-                showToast('命令已复制到剪贴板');
+                    if (btn) {
+                        const originalText = btn.textContent;
+                        btn.textContent = '已复制!';
+                        btn.classList.add('copied');
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.classList.remove('copied');
+                        }, 2000);
+                    }
+                    showToast('命令已复制到剪贴板');
             };
 
             if (navigator.clipboard && navigator.clipboard.writeText) {

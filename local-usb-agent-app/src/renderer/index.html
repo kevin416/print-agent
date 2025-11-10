@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>Yepos Agent 控制面板</title>
+  <title>Yepos Agent Control Panel</title>
   <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
   <style>
     body {
@@ -19,6 +19,18 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+    }
+    /* Header 内的所有文字都应该是白色 */
+    header .muted {
+      color: rgba(255, 255, 255, 0.9) !important;
+    }
+    header .status-chip {
+      background: rgba(255, 255, 255, 0.2) !important;
+      color: #fff !important;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    header strong {
+      color: #fff;
     }
     .header-actions {
       display: flex;
@@ -347,6 +359,10 @@
       background: #cbd5f5;
       cursor: not-allowed;
     }
+    .info-text {
+      color: #fff;
+      font-size: 13px;
+    }
     #btn-onboarding-skip {
       color: #475569;
       background: transparent;
@@ -359,170 +375,174 @@
 <body>
 <header>
   <div>
-    <strong>本地 USB 打印 Agent</strong>
-    <span id="status-chip" class="status-chip status-offline">状态未知</span>
+    <strong>Yepos Printer Agent</strong>
+    <span id="status-chip" class="status-chip status-offline">Unknown</span>
   </div>
   <div class="header-actions">
-    <div class="muted" id="status-meta">--</div>
+    <div id="status-meta" class="muted">--</div>
+    <select id="language-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 13px; margin-right: 8px;">
+      <option value="zh-CN">中文</option>
+      <option value="en-US">English</option>
+    </select>
     <div class="header-buttons">
-      <button class="secondary" id="btn-restart-app">重新启动</button>
-      <button class="danger" id="btn-quit-app">完全退出</button>
+      <button class="secondary" id="btn-restart-app">Restart</button>
+      <button class="danger" id="btn-quit-app">Quit</button>
     </div>
   </div>
 </header>
 <main>
   <section class="card" id="config-card">
     <div class="flex-between">
-      <h2>基础配置</h2>
+      <h2>Basic Configuration</h2>
       <div>
-        <button class="secondary" id="btn-save-config">保存配置</button>
-        <button class="secondary" id="btn-refresh">重新检测</button>
+        <button class="secondary" id="btn-save-config">Save Configuration</button>
+        <button class="secondary" id="btn-refresh">Refresh</button>
       </div>
     </div>
     <div class="form-row">
       <div class="form-field">
-        <label for="shop-id">分店 Shop ID</label>
-        <input type="text" id="shop-id" placeholder="例如 bbq-ktv 或数值 companyId">
+        <label for="shop-id">Shop ID</label>
+        <input type="text" id="shop-id" placeholder="e.g., bbq-ktv or numeric companyId">
       </div>
       <div class="form-field">
-        <label for="server-port">本地服务端口</label>
+        <label for="server-port">Local Service Port</label>
         <input type="number" id="server-port" min="1000" max="65535">
       </div>
     </div>
     <div class="form-row" style="margin-top:16px; align-items:center;">
       <label style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="autostart-toggle">
-        随系统启动
+        Start with System
       </label>
       <label style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="allow-self-signed">
-        允许自签名证书 (调试)
+        Allow Self-Signed Certificates (Debug)
       </label>
       <label style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="background-mode-toggle" checked>
-        关闭窗口后继续后台运行
+        Continue Running in Background After Window Close
       </label>
       <label style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="auto-test-on-attach">
-        新接入打印机自动测试
+        Auto Test New Printers
       </label>
     </div>
   </section>
 
   <section class="card" id="hotplug-card">
     <div class="flex-between">
-      <h2>设备热插拔</h2>
-      <span class="muted">最近检测到的 5 条事件</span>
+      <h2>Device Hotplug</h2>
+      <span class="muted">Last 5 Events</span>
     </div>
-    <div id="hotplug-events" class="muted">暂无最新事件</div>
+    <div id="hotplug-events" class="muted">No Recent Events</div>
   </section>
 
   <section class="card" id="updater-card">
     <div class="flex-between">
-      <h2>版本与更新</h2>
+      <h2>Version & Updates</h2>
       <div class="chips">
         <span id="version-badge" class="status-chip status-online">v0.0.0</span>
-        <span id="update-status" class="status-chip status-offline">尚未检查</span>
+        <span id="update-status" class="status-chip status-offline">Not Checked</span>
       </div>
     </div>
-    <div class="muted" id="update-message">自动更新配置未启用</div>
+    <div class="muted" id="update-message">Auto update not configured</div>
     <div class="form-row" style="margin-top:16px;">
       <div class="form-field">
-        <label for="updates-feed-url">更新源地址</label>
+        <label for="updates-feed-url">Update Feed URL</label>
         <input type="text" id="updates-feed-url" placeholder="https://.../updates/local-usb-agent">
       </div>
       <div class="form-field">
-        <label for="updates-channel">更新通道</label>
+        <label for="updates-channel">Update Channel</label>
         <select id="updates-channel">
-          <option value="stable">稳定版</option>
-          <option value="beta">Beta 测试</option>
+          <option value="stable">Stable</option>
+          <option value="beta">Beta</option>
         </select>
       </div>
       <div class="form-field">
-        <label style="visibility:hidden;">自动下载</label>
+        <label style="visibility:hidden;">Auto Download</label>
         <label style="display:flex; gap:8px; align-items:center;">
           <input type="checkbox" id="updates-auto-download" checked>
-          自动下载更新
+          Auto Download Updates
         </label>
       </div>
     </div>
     <div class="flex-between" style="margin-top:16px;">
       <div>
-        <button class="secondary" id="btn-check-update">检查更新</button>
-        <button class="primary" id="btn-install-update" disabled>立即安装</button>
+        <button class="secondary" id="btn-check-update">Check for Updates</button>
+        <button class="primary" id="btn-install-update" disabled>Install Now</button>
       </div>
       <div class="muted" id="update-last-checked">--</div>
     </div>
     <div id="update-progress" style="margin-top:12px; display:none;">
-      <div class="muted" id="update-progress-label">下载进度</div>
+      <div class="muted" id="update-progress-label">Download Progress</div>
       <div class="progress-track">
         <div class="progress-fill" id="update-progress-fill" style="width:0%;"></div>
       </div>
     </div>
     <details id="update-release-notes" style="margin-top:12px; display:none;">
-      <summary>发行说明</summary>
+      <summary>Release Notes</summary>
       <div id="update-release-content" class="muted" style="margin-top:8px; white-space:pre-wrap;"></div>
     </details>
   </section>
 
   <section class="card" id="telemetry-card">
     <div class="flex-between">
-      <h2>远程监控</h2>
+      <h2>Remote Monitoring</h2>
       <div class="chips">
-        <span id="telemetry-status-chip" class="status-chip status-offline">未启用</span>
+        <span id="telemetry-status-chip" class="status-chip status-offline">Disabled</span>
         <span id="telemetry-last-sync" class="status-chip">--</span>
       </div>
     </div>
-    <div class="muted" id="telemetry-message">尚未开启心跳上报。</div>
+    <div class="muted" id="telemetry-message">Heartbeat reporting not enabled.</div>
     <div class="form-row" style="margin-top:16px;">
       <label style="display:flex; gap:8px; align-items:center;">
         <input type="checkbox" id="telemetry-enabled">
-        启用心跳上报
+        Enable Heartbeat Reporting
       </label>
       <label style="display:flex; gap:8px; align-items:center;">
         <input type="checkbox" id="telemetry-include-logs">
-        上传日志尾部
+        Upload Log Tail
       </label>
     </div>
     <div class="form-row">
       <div class="form-field">
-        <label for="telemetry-endpoint">上报地址</label>
+        <label for="telemetry-endpoint">Endpoint URL</label>
         <input type="text" id="telemetry-endpoint" placeholder="https://pa.easyify.uk/api/agent-heartbeat">
       </div>
       <div class="form-field">
-        <label for="telemetry-interval">上报间隔（秒）</label>
+        <label for="telemetry-interval">Interval (seconds)</label>
         <input type="number" id="telemetry-interval" min="15" value="30">
       </div>
     </div>
     <div class="flex-between" style="margin-top:16px;">
-      <div class="muted" id="telemetry-next-sync">下次心跳：--</div>
+      <div class="muted" id="telemetry-next-sync">Next Heartbeat: --</div>
       <div>
-        <button class="secondary" id="btn-send-heartbeat">立即同步</button>
+        <button class="secondary" id="btn-send-heartbeat">Send Now</button>
       </div>
     </div>
     <details id="telemetry-log-preview" style="margin-top:12px; display:none;">
-      <summary>最近上传日志</summary>
+      <summary>Recent Uploaded Logs</summary>
       <pre id="telemetry-log-content" class="log-viewer" style="max-height:160px;"></pre>
     </details>
   </section>
 
   <section class="card">
     <div class="flex-between">
-      <h2>USB 设备映射</h2>
-      <button class="secondary" id="btn-refresh-devices">刷新列表</button>
+      <h2>USB Device Mapping</h2>
+      <button class="secondary" id="btn-refresh-devices">Refresh List</button>
     </div>
-    <p class="muted">请将打印机连接到计算机，点击刷新查看识别情况。可在下方为每个设备指定别名。</p>
+    <p class="muted">Connect printers to your computer and click refresh to see detected devices. You can assign aliases to each device below.</p>
     <table>
       <thead>
         <tr>
-          <th>设备</th>
+          <th>Device</th>
           <th>Vendor ID</th>
           <th>Product ID</th>
-          <th>备注名称</th>
-          <th>用途</th>
-          <th>默认</th>
-          <th>操作</th>
-          <th>最近状态</th>
+          <th>Alias</th>
+          <th>Role</th>
+          <th>Default</th>
+          <th>Actions</th>
+          <th>Recent Status</th>
         </tr>
       </thead>
       <tbody id="device-table"></tbody>
@@ -531,50 +551,50 @@
 
   <section class="card" id="history-card">
     <div class="flex-between">
-      <h2>打印测试历史</h2>
+      <h2>Print Test History</h2>
       <div>
-        <button class="secondary" id="btn-refresh-history">刷新</button>
-        <button class="secondary" id="btn-clear-history">清空记录</button>
+        <button class="secondary" id="btn-refresh-history">Refresh</button>
+        <button class="secondary" id="btn-clear-history">Clear Records</button>
       </div>
     </div>
-    <div class="muted" id="history-summary">最近 0 条记录</div>
+    <div class="muted" id="history-summary">Last 0 Records</div>
     <table class="history-table" style="margin-top:12px;">
       <thead>
         <tr>
-          <th>时间</th>
-          <th>设备</th>
-          <th>别名 / 用途</th>
-          <th>状态</th>
-          <th>详情</th>
+          <th>Time</th>
+          <th>Device</th>
+          <th>Alias / Role</th>
+          <th>Status</th>
+          <th>Details</th>
         </tr>
       </thead>
       <tbody id="history-table-body">
-        <tr><td colspan="5" style="color:#64748b;text-align:center;padding:16px;">暂无测试记录</td></tr>
+        <tr><td colspan="5" style="color:#64748b;text-align:center;padding:16px;">No Test Records</td></tr>
       </tbody>
     </table>
   </section>
 
   <section class="card">
     <div class="flex-between">
-      <h2>日志</h2>
-      <button class="secondary" id="btn-refresh-logs">刷新日志</button>
+      <h2>Logs</h2>
+      <button class="secondary" id="btn-refresh-logs">Refresh Logs</button>
     </div>
     <div class="muted" id="log-path"></div>
-    <div class="log-viewer" id="log-viewer">尚无日志</div>
+    <div class="log-viewer" id="log-viewer">No Logs</div>
   </section>
 </main>
 <div id="onboarding-backdrop" class="onboarding-backdrop onboarding-hidden">
   <div class="onboarding-modal">
     <div class="onboarding-header">
-      <h2 id="onboarding-title">欢迎使用</h2>
+      <h2 id="onboarding-title">Welcome</h2>
       <p id="onboarding-subtitle"></p>
     </div>
     <div id="onboarding-body" class="onboarding-body"></div>
     <div class="onboarding-footer">
-      <button id="btn-onboarding-skip">跳过引导</button>
+      <button id="btn-onboarding-skip">Skip Guide</button>
       <div class="spacer"></div>
-      <button id="btn-onboarding-prev" class="secondary">上一步</button>
-      <button id="btn-onboarding-next" class="primary">继续</button>
+      <button id="btn-onboarding-prev" class="secondary">Previous</button>
+      <button id="btn-onboarding-next" class="primary">Next</button>
     </div>
   </div>
 </div>

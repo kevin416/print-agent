@@ -18,8 +18,15 @@ module.exports = function createWsClient(options) {
     tcpPrinterManager,
     logger,
     printerMappings,
-    printHistory
+    printHistory,
+    getI18n
   } = options;
+  
+  function t(key, params) {
+    const i18n = getI18n ? getI18n() : null;
+    if (!i18n) return key;
+    return i18n.t(key, params);
+  }
 
   let socket = null;
   let reconnectTimer = null;
@@ -216,7 +223,7 @@ module.exports = function createWsClient(options) {
         alias: printer.alias,
         role: printer.role,
         status: 'success',
-        message: '远程任务打印成功'
+        message: t('print.remoteTaskSuccess')
       };
       if (connectionType === 'tcp') {
         successRecord.ip = printer.ip || printer.host;
@@ -226,13 +233,14 @@ module.exports = function createWsClient(options) {
         successRecord.productId = Number(printer.productId);
       }
       printHistory.append(successRecord);
+      const successMessage = t('print.remoteTaskSuccess');
       if (connectionType === 'usb') {
         const key = printerMappings.buildUsbKey(printer.vendorId, printer.productId);
         printerMappings.updateMapping(key, {
           lastTest: {
             status: 'success',
             timestamp: new Date().toISOString(),
-            message: '远程任务打印成功'
+            message: successMessage
           }
         });
       } else if (connectionType === 'tcp' && printer.ip) {
@@ -241,7 +249,7 @@ module.exports = function createWsClient(options) {
           lastTest: {
             status: 'success',
             timestamp: new Date().toISOString(),
-            message: '远程任务打印成功'
+            message: successMessage
           }
         });
       }
@@ -252,13 +260,14 @@ module.exports = function createWsClient(options) {
       });
     } catch (error) {
       logger.error('WS remote print failed', error);
+      const errorMessage = error?.message || t('print.remoteTaskFailed');
       const errorRecord = {
         type: 'remote-test',
         connectionType,
         alias: printer.alias,
         role: printer.role,
         status: 'error',
-        message: error?.message || '远程任务打印失败'
+        message: errorMessage
       };
       if (connectionType === 'tcp') {
         errorRecord.ip = printer.ip || printer.host;
@@ -274,7 +283,7 @@ module.exports = function createWsClient(options) {
           lastTest: {
             status: 'error',
             timestamp: new Date().toISOString(),
-            message: error?.message || '远程任务打印失败'
+            message: errorMessage
           }
         });
       } else if (connectionType === 'tcp' && (printer.ip || printer.host)) {
@@ -283,14 +292,14 @@ module.exports = function createWsClient(options) {
           lastTest: {
             status: 'error',
             timestamp: new Date().toISOString(),
-            message: error?.message || '远程任务打印失败'
+            message: errorMessage
           }
         });
       }
       sendMessage({
         type: 'task_result',
         id,
-        payload: { status: 'error', message: error?.message || '打印失败' }
+        payload: { status: 'error', message: errorMessage }
       });
     }
   }
@@ -371,7 +380,7 @@ module.exports = function createWsClient(options) {
         ip: host,
         port,
         status: 'success',
-        message: '本地代理打印成功'
+        message: t('print.localAgentSuccess')
       });
       sendLegacyPrintResult({
         taskId,
@@ -380,18 +389,19 @@ module.exports = function createWsClient(options) {
       });
     } catch (error) {
       logger.error('Legacy print task failed', error);
+      const errorMessage = error?.message || t('print.localAgentFailed');
       printHistory.append({
         type: 'print',
         connectionType: 'tcp',
         ip: host,
         port,
         status: 'error',
-        message: error?.message || '本地代理打印失败'
+        message: errorMessage
       });
       sendLegacyPrintResult({
         taskId,
         success: false,
-        error: error?.message || '打印失败'
+        error: errorMessage
       });
     }
   }

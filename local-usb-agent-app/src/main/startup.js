@@ -45,7 +45,12 @@ function setAutoLaunchEnabled(enabled) {
       }
       return;
     }
-    app.setLoginItemSettings({ openAtLogin: enabled, path: app.getPath('exe') });
+    // macOS 自启动时也使用 --hidden 参数
+    app.setLoginItemSettings({ 
+      openAtLogin: enabled, 
+      path: app.getPath('exe'),
+      args: enabled ? ['--hidden'] : []
+    });
   } catch (err) {
     // ignore
   }

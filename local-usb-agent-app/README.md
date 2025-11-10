@@ -1,6 +1,6 @@
-# Local USB Print Agent (Electron MVP)
+# Yepos Agent
 
-Electron 驱动的本地打印守护进程，用于在 Windows/macOS 终端上桥接浏览器与 USB 打印机。相比此前的 `local-usb-agent-demo`，此版本提供托盘常驻、配置面板、自启动选项、设备映射以及日志查看。
+Electron 驱动的本地打印守护进程，用于在 Windows/macOS 终端上桥接浏览器与 USB/TCP 打印机。提供托盘常驻、配置面板、自启动选项、设备映射以及日志查看。
 
 ## 特性
 
@@ -8,12 +8,14 @@ Electron 驱动的本地打印守护进程，用于在 Windows/macOS 终端上�
 - ✅ 内置 Express HTTP 服务 (`/health`, `/print`)，兼容现有浏览器联调接口
 - ✅ 自动保存 `shopId`、端口、自签名策略等配置（基于 `electron-store`）
 - ✅ USB 设备枚举、别名管理，与日志查看
-- ✅ OS 自启动开关（Windows/macOS `Login Items`，Windows 额外写入启动项快捷方式）
-- ✅ 日志持久化至跨平台日志目录（macOS `~/Library/Logs/LocalUSBPrintAgent/agent.log`、Windows `%APPDATA%\\LocalUSBPrintAgent\\Logs`）
+- ✅ OS 自启动开关（Windows/macOS `Login Items`，Windows 额外写入启动项快捷方式），系统重启时自动后台运行
+- ✅ 日志持久化至跨平台日志目录（macOS `~/Library/Logs/YeposAgent/agent.log`、Windows `%APPDATA%\\YeposAgent\\Logs`）
 - ✅ 集成 electron-updater，支持自建更新源、手动检查与静默下载
 - ✅ 周期性心跳上报（设备状态、版本、日志尾部）至中央 `print-agent` 后台
 - ✅ 设备映射、用途标签、自定义默认机型与打印测试历史
 - ✅ 首次启动引导，逐步完成 Shop ID、默认打印机和远程监控配置
+- ✅ 单实例运行机制，防止重复启动和端口冲突
+- ✅ 支持 USB 和 TCP 网络打印机
 - 🧭 设备映射、打印队列与监控能力将持续增强
 
 ## 安装与启动
@@ -38,15 +40,67 @@ npm install
 npm run dev
 ```
 
-> 首次运行会在托盘显示“Local USB Print Agent”，点击即可打开控制面板。
+> 首次运行会在托盘显示"Yepos Agent"，点击即可打开控制面板。
 
 ## 打包
+
+### 通用打包命令
 
 ```bash
 npm run build
 ```
 
 Electron Builder 将输出至 `build/` 目录，对应平台的 DMG/ZIP/NSIS/AppImage 包。
+
+### 平台特定打包命令
+
+**Windows (x64):**
+```bash
+# 打包 Windows 安装程序（NSIS）
+npx electron-builder --win --x64
+
+# 打包 Windows 便携版（ZIP）
+npx electron-builder --win --x64 --dir
+```
+
+**macOS:**
+```bash
+# 打包 macOS DMG 和 ZIP
+npx electron-builder --mac
+
+# 仅打包 DMG
+npx electron-builder --mac --dmg
+
+# 仅打包 ZIP
+npx electron-builder --mac --zip
+
+# 指定架构（arm64 或 x64）
+npx electron-builder --mac --arm64
+npx electron-builder --mac --x64
+```
+
+**Linux:**
+```bash
+# 打包 Linux AppImage 和 DEB
+npx electron-builder --linux
+
+# 仅打包 AppImage
+npx electron-builder --linux --appimage
+
+# 仅打包 DEB
+npx electron-builder --linux --deb
+```
+
+**跨平台打包（需要对应平台环境）:**
+```bash
+# 同时打包 Windows 和 macOS（需要在 macOS 上运行）
+npx electron-builder --win --mac
+
+# 打包所有平台（需要在 macOS 上运行，Windows 需要 Wine）
+npx electron-builder --win --mac --linux
+```
+
+> **注意**：Windows 安装包需要在 Windows 系统上构建，macOS 安装包需要在 macOS 系统上构建。Linux 可以在 macOS 或 Linux 上构建。
 
 ### 清理构建缓存
 
@@ -104,11 +158,21 @@ npm run build -- --clean
 - 一键触发测试打印并记录结果，最近历史保存在本地，可随时查看或清空
 - 映射存储于 `printerMappings`，历史保存在 `printHistory`，便于后续上传到中央服务
 
-## Windows 自启动机制
+## 自启动机制
 
-- 控制面板中的“随系统启动”开关会写入/删除 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Local USB Print Agent.lnk`。
-- 快捷方式指向当前 `LocalUSBPrintAgent.exe`，携带 `--hidden` 参数，登录后静默运行。
-- 如果重新安装到新目录，建议关闭后再勾选一次以刷新启动项；也可以在任务管理器的“启动”标签或上述目录核实。
+### Windows
+- 控制面板中的"随系统启动"开关会写入/删除 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Yepos Agent.lnk`。
+- 快捷方式指向当前 `Yepos Agent.exe`，携带 `--hidden` 参数，登录后静默运行（不显示窗口，只在托盘显示图标）。
+- 如果重新安装到新目录，建议关闭后再勾选一次以刷新启动项；也可以在任务管理器的"启动"标签或上述目录核实。
+
+### macOS
+- 使用系统 `Login Items` 机制，通过 `app.setLoginItemSettings` 设置。
+- 自启动时同样携带 `--hidden` 参数，登录后静默运行（不显示窗口，只在状态栏显示图标）。
+
+### 单实例运行
+- 应用使用单实例锁定机制，确保同一时间只有一个实例运行。
+- 如果应用已经启动，再次打开应用会自动显示并聚焦已存在的窗口，而不是启动新实例或报错。
+- 系统重启时，应用会自动在后台启动，只显示托盘/状态栏图标，不显示窗口。用户可以通过点击托盘图标打开控制面板。
 
 ## 中文打印与编码
 

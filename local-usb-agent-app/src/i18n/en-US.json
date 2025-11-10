@@ -1,0 +1,290 @@
+{
+  "app": {
+    "title": "Local USB Print Agent",
+    "name": "Yepos Agent"
+  },
+  "status": {
+    "unknown": "Unknown",
+    "running": "Running",
+    "stopped": "Stopped",
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "header": {
+    "restart": "Restart",
+    "quit": "Quit"
+  },
+  "config": {
+    "title": "Basic Configuration",
+    "save": "Save Configuration",
+    "refresh": "Refresh",
+    "shopId": "Shop ID",
+    "shopIdPlaceholder": "e.g., bbq-ktv or numeric companyId",
+    "serverPort": "Local Service Port",
+    "autostart": "Start with System",
+    "allowSelfSigned": "Allow Self-Signed Certificates (Debug)",
+    "runInBackground": "Continue Running in Background After Window Close",
+    "autoTestOnAttach": "Auto Test New Printers"
+  },
+  "hotplug": {
+    "title": "Device Hotplug",
+    "recentEvents": "Last 5 Events",
+    "noEvents": "No Recent Events",
+    "deviceAttached": "Device Attached",
+    "deviceDetached": "Device Detached",
+    "event": "Event",
+    "port": "Port",
+    "testing": "Auto Testing...",
+    "testSuccess": "Auto Test Success",
+    "testFailed": "Auto Test Failed",
+    "testPrint": "Test Print"
+  },
+  "updates": {
+    "title": "Version & Updates",
+    "version": "v{version}",
+    "status": {
+      "idle": "Idle",
+      "disabled": "Disabled",
+      "checking": "Checking",
+      "available": "Update Available",
+      "downloading": "Downloading",
+      "downloaded": "Ready to Install",
+      "error": "Error",
+      "development": "Development Mode"
+    },
+    "message": {
+      "notConfigured": "Auto update not configured",
+      "disabled": "Update source not set, auto update disabled",
+      "development": "Updates disabled in development mode",
+      "notChecked": "Update not checked yet",
+      "cannotCheck": "Cannot check for updates: {reason}",
+      "cannotStartCheck": "Cannot start check, please confirm update source is configured.",
+      "noUpdateAvailable": "No update available to install, please check and download first."
+    },
+    "feedUrl": "Update Feed URL",
+    "feedUrlPlaceholder": "https://.../updates/local-usb-agent",
+    "channel": "Update Channel",
+    "channelStable": "Stable",
+    "channelBeta": "Beta",
+    "autoDownload": "Auto Download Updates",
+    "checkUpdate": "Check for Updates",
+    "installUpdate": "Install Now",
+    "lastChecked": "Last Checked: {time}",
+    "progress": "Download Progress",
+    "progressPercent": "Download Progress {percent}% ({transferred} / {total} MB)",
+    "releaseNotes": "Release Notes"
+  },
+  "telemetry": {
+    "title": "Remote Monitoring",
+    "status": {
+      "disabled": "Disabled",
+      "idle": "Idle",
+      "waiting": "Waiting for Configuration",
+      "sending": "Sending",
+      "online": "Online",
+      "error": "Error"
+    },
+    "message": "Heartbeat reporting not enabled.",
+    "enabled": "Enable Heartbeat Reporting",
+    "includeLogs": "Upload Log Tail",
+    "endpoint": "Endpoint URL",
+    "endpointPlaceholder": "https://pa.easyify.uk/api/agent-heartbeat",
+    "interval": "Interval (seconds)",
+    "nextSync": "Next Heartbeat: {time}",
+    "lastSuccess": "Last Success: {time}",
+    "sendNow": "Send Now",
+    "sendFailed": "Send Failed: {error}",
+    "sendFailedGeneric": "Send Failed",
+    "recentLogs": "Recent Uploaded Logs"
+  },
+  "devices": {
+    "title": "USB Device Mapping",
+    "refresh": "Refresh List",
+    "description": "Connect printers to your computer and click refresh to see detected devices. You can assign aliases to each device below.",
+    "noDevices": "No USB Devices Detected",
+    "device": "Device",
+    "vendorId": "Vendor ID",
+    "productId": "Product ID",
+    "alias": "Alias",
+    "aliasPlaceholder": "Notes, location, etc.",
+    "role": "Role",
+    "default": "Default",
+    "actions": "Actions",
+    "status": "Recent Status",
+    "testPrint": "Test Print",
+    "testing": "Testing...",
+    "notTested": "Not Tested",
+    "success": "Success",
+    "failed": "Failed",
+    "attached": "Just Attached",
+    "detached": "Just Detached",
+    "mayNotBePrinter": "⚠️ May Not Be Printer",
+    "usbDevice": "USB Device"
+  },
+  "history": {
+    "title": "Print Test History",
+    "refresh": "Refresh",
+    "clear": "Clear Records",
+    "summary": "Last {count} Records",
+    "noRecords": "No Test Records",
+    "time": "Time",
+    "device": "Device",
+    "aliasRole": "Alias / Role",
+    "status": "Status",
+    "details": "Details",
+    "success": "Success",
+    "failed": "Failed",
+    "unknown": "Unknown Address"
+  },
+  "logs": {
+    "title": "Logs",
+    "refresh": "Refresh Logs",
+    "path": "Log File: {path}",
+    "noLogs": "No Logs"
+  },
+  "onboarding": {
+    "skip": "Skip Guide",
+    "prev": "Previous",
+    "next": "Next",
+    "finish": "Finish",
+    "skipConfirm": "Are you sure you want to skip the guide? You can reopen it later in settings.",
+    "steps": {
+      "welcome": {
+        "title": "Welcome to Local Print Agent",
+        "subtitle": "We will guide you through basic configuration and testing to ensure smooth printing.",
+        "content": "<p>The process takes about 2-3 minutes. Please follow the prompts:</p><ul><li>Bind Shop ID</li><li>Select default printer and complete test</li><li>Enable remote monitoring heartbeat for headquarters to track agent status</li></ul><p>Click \"Next\" when ready.</p>"
+      },
+      "shop": {
+        "title": "Configure Shop ID",
+        "subtitle": "Bind manager_next company/shop ID for system identification.",
+        "content": "<p>Enter Shop ID in the \"Basic Configuration\" section above (usually corresponds to manager_next companyId).</p><ul><li>Current Input: <strong>{value}</strong></li><li>Click \"Save Configuration\" in the top right after entering.</li></ul>"
+      },
+      "defaultPrinter": {
+        "title": "Set Default Printer",
+        "subtitle": "Select a default USB printer for your shop.",
+        "content": "<p>In the \"USB Device Mapping\" list, check \"Default\" for the printer you want to use and fill in alias/role.</p><ul><li>Tip: You can select roles like Kitchen / FrontDesk / Receipt.</li><li>Current Default Printer: <strong>{printer}</strong></li></ul>"
+      },
+      "testPrint": {
+        "title": "Complete Test Print",
+        "subtitle": "Confirm the default printer can output paper normally.",
+        "content": "<p>Click the \"Test Print\" button in the device list (or \"Test Default Printer\" in the tray menu) to ensure the printer outputs paper normally.</p><ul><li>It is recommended to use paper to observe if \"Test Print Task\" content is printed.</li><li>Current Status: <strong>{status}</strong></li></ul>"
+      },
+      "telemetry": {
+        "title": "Enable Remote Monitoring",
+        "subtitle": "Let headquarters track shop agent status in real-time for quick support.",
+        "content": "<p>In \"Remote Monitoring\", check \"Enable Heartbeat Reporting\" and \"Upload Log Tail\", and confirm the endpoint URL is correct.</p><ul><li>After completion, click \"Send Now\" to see if it shows \"Online\".</li><li>Current Status: <strong>{status}</strong></li></ul>"
+      }
+    }
+  },
+  "tray": {
+    "openPanel": "Open Control Panel",
+    "rescanDevices": "Rescan Devices",
+    "testDefaultPrinter": "Test Default Printer",
+    "defaultPrinterSettings": "Default Printer Settings",
+    "viewConfig": "View Current Configuration",
+    "clearDefault": "Clear Default Settings",
+    "viewLogs": "View Logs",
+    "openLogDir": "Open Log Directory",
+    "recentTests": "Recent Test Records",
+    "quit": "Quit"
+  },
+  "dialogs": {
+    "restartConfirm": "Are you sure you want to restart the local print Agent? Current tasks will be interrupted.",
+    "quitConfirm": "Are you sure you want to completely quit the local print Agent? It will no longer receive print tasks after quitting.",
+    "noDefaultPrinter": {
+      "title": "No Default Printer Configured",
+      "message": "Please check \"Default\" for a device in the application interface before testing."
+    },
+    "testFailed": {
+      "title": "Test Failed",
+      "message": "Default printer not found. Please confirm USB device is connected."
+    },
+    "testComplete": {
+      "title": "Test Complete",
+      "message": "Test print has been sent. Please check if the printer outputs paper."
+    },
+    "testError": {
+      "title": "Test Failed",
+      "message": "{error}"
+    },
+    "noDefaultPrinterTitle": "No Default Printer Configured",
+    "invalidConfig": "Cannot parse default printer configuration",
+    "invalidDefaultPrinter": "Invalid default printer configuration",
+    "unsupportedPrinter": {
+      "title": "Unsupported Printer Type",
+      "message": "Current default printer type does not support tray testing. Please test in the application."
+    },
+    "defaultPrinter": {
+      "title": "Default Printer",
+      "noDefault": "No default printer set.",
+      "current": "Current Default Printer:\n{key}\nAlias: {alias}\nRole: {role}",
+      "cleared": "Default printer settings cleared.",
+      "noDefaultMessage": "No default printer currently."
+    },
+    "logLocation": {
+      "title": "Log File Location",
+      "message": "Log file is located at:\n{path}"
+    },
+    "printHistory": {
+      "title": "Print History",
+      "noRecords": "No test records."
+    },
+    "recentPrintHistory": {
+      "title": "Recent Print Records"
+    },
+    "bootstrapError": {
+      "title": "Bootstrap Failed"
+    }
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "yes": "Yes",
+    "no": "No",
+    "save": "Save",
+    "refresh": "Refresh",
+    "clear": "Clear",
+    "loading": "Loading...",
+    "notSet": "Not Set",
+    "notConfigured": "Not Configured",
+    "notSelected": "Not Selected",
+    "unknown": "Unknown",
+    "autoStartEnabled": "Enabled",
+    "autoStartDisabled": "Disabled",
+    "httpService": "HTTP Service Port {port}",
+    "usbDevices": "USB Devices {count}",
+    "tcpPrinters": "TCP Printers {count}",
+    "justNow": "Just now",
+    "secondsAgo": "{count} seconds ago",
+    "minutesAgo": "{count} minutes ago",
+    "hoursAgo": "{count} hours ago",
+    "daysAgo": "{count} days ago"
+  },
+  "language": {
+    "title": "Language",
+    "chinese": "中文",
+    "english": "English",
+    "switch": "Switch Language"
+  },
+  "print": {
+    "testTask": "Test Print Task",
+    "time": "Time",
+    "alias": "Alias",
+    "role": "Role",
+    "tcp": "TCP",
+    "vendor": "Vendor",
+    "product": "Product",
+    "unknownAddress": "Unknown Address",
+    "successMessage": "Print success indicates local agent is working",
+    "testSuccess": "Test print successful",
+    "testFailed": "Test print failed",
+    "remoteTaskSuccess": "Remote task print successful",
+    "remoteTaskFailed": "Remote task print failed",
+    "localAgentSuccess": "Local agent print successful",
+    "localAgentFailed": "Local agent print failed",
+    "printFailed": "Print failed",
+    "missingVendorProduct": "Missing vendorId / productId",
+    "missingTcpIp": "Missing TCP printer IP address"
+  }
+}
+

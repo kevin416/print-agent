@@ -1,0 +1,290 @@
+{
+  "app": {
+    "title": "本地 USB 打印 Agent",
+    "name": "Yepos Agent"
+  },
+  "status": {
+    "unknown": "状态未知",
+    "running": "运行中",
+    "stopped": "未启动",
+    "online": "在线",
+    "offline": "离线"
+  },
+  "header": {
+    "restart": "重新启动",
+    "quit": "完全退出"
+  },
+  "config": {
+    "title": "基础配置",
+    "save": "保存配置",
+    "refresh": "重新检测",
+    "shopId": "分店 Shop ID",
+    "shopIdPlaceholder": "例如 bbq-ktv 或数值 companyId",
+    "serverPort": "本地服务端口",
+    "autostart": "随系统启动",
+    "allowSelfSigned": "允许自签名证书 (调试)",
+    "runInBackground": "关闭窗口后继续后台运行",
+    "autoTestOnAttach": "新接入打印机自动测试"
+  },
+  "hotplug": {
+    "title": "设备热插拔",
+    "recentEvents": "最近检测到的 5 条事件",
+    "noEvents": "暂无最新事件",
+    "deviceAttached": "设备接入",
+    "deviceDetached": "设备移除",
+    "event": "事件",
+    "port": "端口",
+    "testing": "自动测试中...",
+    "testSuccess": "自动测试成功",
+    "testFailed": "自动测试失败",
+    "testPrint": "测试打印"
+  },
+  "updates": {
+    "title": "版本与更新",
+    "version": "v{version}",
+    "status": {
+      "idle": "待命",
+      "disabled": "未启用",
+      "checking": "正在检查",
+      "available": "发现更新",
+      "downloading": "下载中",
+      "downloaded": "可安装",
+      "error": "出错",
+      "development": "开发模式"
+    },
+    "message": {
+      "notConfigured": "自动更新配置未启用",
+      "disabled": "未设置更新源，关闭自动更新",
+      "development": "开发模式下不执行更新",
+      "notChecked": "尚未检查更新",
+      "cannotCheck": "无法检查更新：{reason}",
+      "cannotStartCheck": "无法启动检查，请确认已经配置更新源。",
+      "noUpdateAvailable": "当前没有可安装的更新，请先检查并下载。"
+    },
+    "feedUrl": "更新源地址",
+    "feedUrlPlaceholder": "https://.../updates/local-usb-agent",
+    "channel": "更新通道",
+    "channelStable": "稳定版",
+    "channelBeta": "Beta 测试",
+    "autoDownload": "自动下载更新",
+    "checkUpdate": "检查更新",
+    "installUpdate": "立即安装",
+    "lastChecked": "最近检查：{time}",
+    "progress": "下载进度",
+    "progressPercent": "下载进度 {percent}% ({transferred} / {total} MB)",
+    "releaseNotes": "发行说明"
+  },
+  "telemetry": {
+    "title": "远程监控",
+    "status": {
+      "disabled": "未启用",
+      "idle": "待命",
+      "waiting": "等待配置",
+      "sending": "发送中",
+      "online": "在线",
+      "error": "异常"
+    },
+    "message": "尚未开启心跳上报。",
+    "enabled": "启用心跳上报",
+    "includeLogs": "上传日志尾部",
+    "endpoint": "上报地址",
+    "endpointPlaceholder": "https://pa.easyify.uk/api/agent-heartbeat",
+    "interval": "上报间隔（秒）",
+    "nextSync": "下次心跳：{time}",
+    "lastSuccess": "最后成功：{time}",
+    "sendNow": "立即同步",
+    "sendFailed": "发送失败：{error}",
+    "sendFailedGeneric": "发送失败",
+    "recentLogs": "最近上传日志"
+  },
+  "devices": {
+    "title": "USB 设备映射",
+    "refresh": "刷新列表",
+    "description": "请将打印机连接到计算机，点击刷新查看识别情况。可在下方为每个设备指定别名。",
+    "noDevices": "未检测到 USB 设备",
+    "device": "设备",
+    "vendorId": "Vendor ID",
+    "productId": "Product ID",
+    "alias": "备注名称",
+    "aliasPlaceholder": "备注、位置等",
+    "role": "用途",
+    "default": "默认",
+    "actions": "操作",
+    "status": "最近状态",
+    "testPrint": "测试打印",
+    "testing": "测试中...",
+    "notTested": "未测试",
+    "success": "成功",
+    "failed": "失败",
+    "attached": "刚刚接入",
+    "detached": "刚刚移除",
+    "mayNotBePrinter": "⚠️ 可能不是打印机",
+    "usbDevice": "USB 设备"
+  },
+  "history": {
+    "title": "打印测试历史",
+    "refresh": "刷新",
+    "clear": "清空记录",
+    "summary": "最近 {count} 条记录",
+    "noRecords": "暂无测试记录",
+    "time": "时间",
+    "device": "设备",
+    "aliasRole": "别名 / 用途",
+    "status": "状态",
+    "details": "详情",
+    "success": "成功",
+    "failed": "失败",
+    "unknown": "未知地址"
+  },
+  "logs": {
+    "title": "日志",
+    "refresh": "刷新日志",
+    "path": "日志文件：{path}",
+    "noLogs": "尚无日志"
+  },
+  "onboarding": {
+    "skip": "跳过引导",
+    "prev": "上一步",
+    "next": "继续",
+    "finish": "完成",
+    "skipConfirm": "确定要跳过引导吗？可以稍后在设置中重新打开。",
+    "steps": {
+      "welcome": {
+        "title": "欢迎使用本地打印 Agent",
+        "subtitle": "我们会引导你完成基础配置与测试，确保门店打印顺畅。",
+        "content": "<p>整个流程大约 2~3 分钟，请按提示操作：</p><ul><li>绑定分店 Shop ID</li><li>选择默认打印机并完成测试</li><li>开启远程监控心跳，便于总部了解代理状态</li></ul><p>准备好了就点击「继续」。</p>"
+      },
+      "shop": {
+        "title": "配置分店 Shop ID",
+        "subtitle": "绑定 manager_next 的公司/分店 ID，方便系统识别。",
+        "content": "<p>在上方「基础配置」区域输入分店 Shop ID（通常与 manager_next 的 companyId 对应）。</p><ul><li>当前输入：<strong>{value}</strong></li><li>填写完成后点击右上角的「保存配置」。</li></ul>"
+      },
+      "defaultPrinter": {
+        "title": "设置默认打印机",
+        "subtitle": "为门店选择一台默认使用的 USB 打印机。",
+        "content": "<p>在「USB 设备映射」列表中，为需要使用的打印机勾选「默认」并填写备注/用途。</p><ul><li>提示：可以根据用途选择 Kitchen / FrontDesk / Receipt 等角色。</li><li>当前默认打印机：<strong>{printer}</strong></li></ul>"
+      },
+      "testPrint": {
+        "title": "完成测试打印",
+        "subtitle": "确认默认打印机可以正常出纸。",
+        "content": "<p>点击设备列表中的「测试打印」按钮（或托盘菜单里的「测试默认打印机」），确保打印机能正常出纸。</p><ul><li>建议使用纸张观察是否打印出\"测试打印任务\"内容。</li><li>当前状态：<strong>{status}</strong></li></ul>"
+      },
+      "telemetry": {
+        "title": "开启远程监控",
+        "subtitle": "让总部及时了解门店代理状态，快速支援。",
+        "content": "<p>在「远程监控」中勾选「启用心跳上报」与「上传日志尾部」，确认上报地址正确。</p><ul><li>完成后可点击「立即同步」查看是否显示为「在线」。</li><li>当前状态：<strong>{status}</strong></li></ul>"
+      }
+    }
+  },
+  "tray": {
+    "openPanel": "打开控制面板",
+    "rescanDevices": "重新扫描设备",
+    "testDefaultPrinter": "测试默认打印机",
+    "defaultPrinterSettings": "默认打印机设置",
+    "viewConfig": "查看当前配置",
+    "clearDefault": "清空默认设置",
+    "viewLogs": "查看日志",
+    "openLogDir": "打开日志目录",
+    "recentTests": "最近测试记录",
+    "quit": "退出"
+  },
+  "dialogs": {
+    "restartConfirm": "确定要重新启动本地打印 Agent 吗？当前任务将中断。",
+    "quitConfirm": "确定要完全退出本地打印 Agent？退出后将不再接收打印任务。",
+    "noDefaultPrinter": {
+      "title": "未配置默认打印机",
+      "message": "请在应用界面中为设备勾选\"默认\"后再测试。"
+    },
+    "testFailed": {
+      "title": "测试失败",
+      "message": "未找到默认打印机，请确认 USB 设备已连接。"
+    },
+    "testComplete": {
+      "title": "测试完成",
+      "message": "测试打印已发送，请检查打印机是否出纸。"
+    },
+    "testError": {
+      "title": "测试失败",
+      "message": "{error}"
+    },
+    "noDefaultPrinterTitle": "未配置默认打印机",
+    "invalidConfig": "无法解析默认打印机配置",
+    "invalidDefaultPrinter": "默认打印机配置无效",
+    "unsupportedPrinter": {
+      "title": "不支持的打印机类型",
+      "message": "当前默认打印机类型暂不支持托盘测试，请在应用内执行测试。"
+    },
+    "defaultPrinter": {
+      "title": "默认打印机",
+      "noDefault": "尚未设置默认打印机。",
+      "current": "当前默认打印机：\n{key}\n别名：{alias}\n用途：{role}",
+      "cleared": "已清除默认打印机设置。",
+      "noDefaultMessage": "当前没有默认打印机。"
+    },
+    "logLocation": {
+      "title": "日志文件位置",
+      "message": "日志文件位于:\n{path}"
+    },
+    "printHistory": {
+      "title": "打印历史",
+      "noRecords": "暂无测试记录。"
+    },
+    "recentPrintHistory": {
+      "title": "最近打印记录"
+    },
+    "bootstrapError": {
+      "title": "启动失败"
+    }
+  },
+  "common": {
+    "ok": "确定",
+    "cancel": "取消",
+    "yes": "是",
+    "no": "否",
+    "save": "保存",
+    "refresh": "刷新",
+    "clear": "清空",
+    "loading": "加载中...",
+    "notSet": "尚未设置",
+    "notConfigured": "尚未配置",
+    "notSelected": "尚未选择",
+    "unknown": "未知",
+    "autoStartEnabled": "已开启",
+    "autoStartDisabled": "未开启",
+    "httpService": "HTTP 服务端口 {port}",
+    "usbDevices": "USB 设备 {count} 台",
+    "tcpPrinters": "TCP 打印机 {count} 台",
+    "justNow": "刚刚",
+    "secondsAgo": "{count} 秒前",
+    "minutesAgo": "{count} 分钟前",
+    "hoursAgo": "{count} 小时前",
+    "daysAgo": "{count} 天前"
+  },
+  "language": {
+    "title": "语言",
+    "chinese": "中文",
+    "english": "English",
+    "switch": "切换语言"
+  },
+  "print": {
+    "testTask": "测试打印任务",
+    "time": "时间",
+    "alias": "别名",
+    "role": "用途",
+    "tcp": "TCP",
+    "vendor": "Vendor",
+    "product": "Product",
+    "unknownAddress": "未知地址",
+    "successMessage": "打印成功即表示本地代理正常",
+    "testSuccess": "测试打印成功",
+    "testFailed": "测试打印失败",
+    "remoteTaskSuccess": "远程任务打印成功",
+    "remoteTaskFailed": "远程任务打印失败",
+    "localAgentSuccess": "本地代理打印成功",
+    "localAgentFailed": "本地代理打印失败",
+    "printFailed": "打印失败",
+    "missingVendorProduct": "缺少 vendorId / productId",
+    "missingTcpIp": "缺少 TCP 打印机 IP 地址"
+  }
+}
+

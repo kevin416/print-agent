@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const iconv = require('iconv-lite');
@@ -13,6 +13,7 @@ const telemetry = require('./telemetry');
 const printerMappings = require('./printerMappings');
 const printHistory = require('./printHistory');
 const createWsClient = require('./wsClient');
+const { getI18n, DEFAULT_LANGUAGE } = require('../i18n');
 
 // 根据平台选择图标文件
 const ICON_PATH_SVG = path.join(__dirname, '../assets/icon-512.svg');
@@ -75,6 +76,9 @@ let tray = null;
 let serverHandle = null;
 let quitting = false;
 let remoteClient = null;
+// 检查是否以隐藏模式启动（系统自启动时）
+const shouldStartHidden = process.argv.includes('--hidden');
+let i18n = null;
 
 function getMappingKey(vendorId, productId) {
   return printerMappings.buildUsbKey(vendorId, productId);
@@ -97,6 +101,9 @@ function emitPrintHistory() {
 }
 
 function buildTestPayload({ connectionType = 'usb', vendorId, productId, alias, role, ip, port }) {
+  if (!i18n) {
+    i18n = getI18n(configStore.get('locale') || DEFAULT_LANGUAGE);
+  }
   const ESC = '\x1B';
   const GS = '\x1D';
   const now = new Date().toLocaleString();
@@ -105,16 +112,16 @@ function buildTestPayload({ connectionType = 'usb', vendorId, productId, alias, 
     ESC + '!' + '\x30',
     'YEPOS AGENT\n',
     ESC + '!' + '\x00',
-    '测试打印任务\n',
+    i18n.t('print.testTask') + '\n',
     '------------------------------\n',
-    `时间: ${now}\n`,
+    `${i18n.t('print.time')}: ${now}\n`,
     connectionType === 'tcp'
-      ? `TCP: ${ip || '未知地址'}:${port || 9100}\n`
-      : `Vendor: 0x${Number(vendorId || 0).toString(16)}\nProduct: 0x${Number(productId || 0).toString(16)}\n`,
-    alias ? `别名: ${alias}\n` : '',
-    role ? `用途: ${role}\n` : '',
+      ? `${i18n.t('print.tcp')}: ${ip || i18n.t('print.unknownAddress')}:${port || 9100}\n`
+      : `${i18n.t('print.vendor')}: 0x${Number(vendorId || 0).toString(16)}\n${i18n.t('print.product')}: 0x${Number(productId || 0).toString(16)}\n`,
+    alias ? `${i18n.t('print.alias')}: ${alias}\n` : '',
+    role ? `${i18n.t('print.role')}: ${role}\n` : '',
     '------------------------------\n',
-    '打印成功即表示本地代理正常\n\n',
+    i18n.t('print.successMessage') + '\n\n',
     GS + 'V' + '\x41' + '\x0A'
   ];
   return iconv.encode(lines.join(''), 'gb18030');
@@ -138,8 +145,11 @@ function createWindow() {
   mainWindow.loadFile(startUrl);
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
+    // 如果是以隐藏模式启动（系统自启动），不显示窗口
+    if (!shouldStartHidden) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 
   mainWindow.on('close', (event) => {
@@ -157,20 +167,11 @@ function createWindow() {
   });
 }
 
-function ensureTray() {
-  if (tray) return;
-  const icon = loadIcon({ template: process.platform === 'darwin' });
-  tray = new Tray(icon);
-  tray.setToolTip('Yepos Agent');
-  tray.on('click', () => {
-    if (!mainWindow) return;
-    mainWindow.show();
-    mainWindow.focus();
-  });
-
+function updateTrayMenu() {
+  if (!tray || !i18n) return;
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '打开控制面板',
+      label: i18n.t('tray.openPanel'),
       click: () => {
         if (!mainWindow) return;
         mainWindow.show();
@@ -178,14 +179,14 @@ function ensureTray() {
       }
     },
     {
-      label: '重新扫描设备',
+      label: i18n.t('tray.rescanDevices'),
       click: async () => {
         await usbManager.refreshDevices();
         mainWindow?.webContents.send('agent:devices-updated');
       }
     },
     {
-      label: '测试默认打印机',
+      label: i18n.t('tray.testDefaultPrinter'),
       click: async () => {
         try {
           const mappings = printerMappings.getMappings();
@@ -193,15 +194,15 @@ function ensureTray() {
           if (!defaultEntry) {
             dialog.showMessageBox({
               type: 'warning',
-              title: '未配置默认打印机',
-              message: '请在应用界面中为设备勾选“默认”后再测试。'
+              title: i18n.t('dialogs.noDefaultPrinter.title'),
+              message: i18n.t('dialogs.noDefaultPrinter.message')
             });
             return;
           }
           const [key, mapping] = defaultEntry;
           const parsed = printerMappings.parseKey(key);
           if (!parsed) {
-            throw new Error('无法解析默认打印机配置');
+            throw new Error(i18n.t('dialogs.invalidConfig'));
           }
 
           if (parsed.connectionType === 'usb') {
@@ -210,14 +211,14 @@ function ensureTray() {
             const vendorId = Number(parsed.vendorId);
             const productId = Number(parsed.productId);
             if (!Number.isFinite(vendorId) || !Number.isFinite(productId)) {
-              throw new Error('默认打印机配置无效');
+              throw new Error(i18n.t('dialogs.invalidDefaultPrinter'));
             }
             const match = devices.find((device) => device.vendorId === vendorId && device.productId === productId);
             if (!match) {
               dialog.showMessageBox({
                 type: 'error',
-                title: '测试失败',
-                message: '未找到默认打印机，请确认 USB 设备已连接。'
+                title: i18n.t('dialogs.testFailed.title'),
+                message: i18n.t('dialogs.testFailed.message')
               });
               return;
             }
@@ -229,10 +230,11 @@ function ensureTray() {
               role: mapping.role
             });
             await usbManager.print({ data: buffer, encoding: 'buffer', vendorId, productId });
+            const trayTestMessage = i18n.t('print.testSuccess');
             printerMappings.updateMapping(key, {
               lastTest: {
                 status: 'success',
-                message: '托盘测试打印成功',
+                message: trayTestMessage,
                 timestamp: new Date().toISOString()
               }
             });
@@ -244,7 +246,7 @@ function ensureTray() {
               alias: mapping.alias,
               role: mapping.role,
               status: 'success',
-              message: '托盘菜单触发测试成功'
+              message: trayTestMessage
             });
           } else if (parsed.connectionType === 'tcp') {
             const buffer = buildTestPayload({
@@ -260,10 +262,11 @@ function ensureTray() {
               data: buffer,
               encoding: 'buffer'
             });
+            const trayTestMessage = i18n.t('print.testSuccess');
             printerMappings.updateMapping(key, {
               lastTest: {
                 status: 'success',
-                message: '托盘测试打印成功',
+                message: trayTestMessage,
                 timestamp: new Date().toISOString()
               }
             });
@@ -275,13 +278,13 @@ function ensureTray() {
               alias: mapping.alias,
               role: mapping.role,
               status: 'success',
-              message: '托盘菜单触发测试成功'
+              message: trayTestMessage
             });
           } else {
             dialog.showMessageBox({
               type: 'warning',
-              title: '不支持的打印机类型',
-              message: '当前默认打印机类型暂不支持托盘测试，请在应用内执行测试。'
+              title: i18n.t('dialogs.unsupportedPrinter.title'),
+              message: i18n.t('dialogs.unsupportedPrinter.message')
             });
             return;
           }
@@ -289,45 +292,49 @@ function ensureTray() {
           emitPrintHistory();
           dialog.showMessageBox({
             type: 'info',
-            title: '测试完成',
-            message: '测试打印已发送，请检查打印机是否出纸。'
+            title: i18n.t('dialogs.testComplete.title'),
+            message: i18n.t('dialogs.testComplete.message')
           });
         } catch (error) {
           logger.error('Tray test default printer failed', error);
           dialog.showMessageBox({
             type: 'error',
-            title: '测试失败',
-            message: error?.message || '测试默认打印机失败，请查看日志。'
+            title: i18n.t('dialogs.testError.title'),
+            message: i18n.t('dialogs.testError.message', { error: error?.message || i18n.t('dialogs.testError.message') })
           });
         }
       }
     },
     {
-      label: '默认打印机设置',
+      label: i18n.t('tray.defaultPrinterSettings'),
       submenu: [
         {
-          label: '查看当前配置',
+          label: i18n.t('tray.viewConfig'),
           click: () => {
             const mappings = printerMappings.getMappings();
             const defaultEntry = Object.entries(mappings).find(([, value]) => value?.isDefault);
             if (!defaultEntry) {
               dialog.showMessageBox({
                 type: 'info',
-                title: '默认打印机',
-                message: '尚未设置默认打印机。'
+                title: i18n.t('dialogs.defaultPrinter.title'),
+                message: i18n.t('dialogs.defaultPrinter.noDefault')
               });
               return;
             }
             const [key, mapping] = defaultEntry;
             dialog.showMessageBox({
               type: 'info',
-              title: '默认打印机',
-              message: `当前默认打印机：\n${key}\n别名：${mapping.alias || '未设置'}\n用途：${mapping.role || '未设置'}`
+              title: i18n.t('dialogs.defaultPrinter.title'),
+              message: i18n.t('dialogs.defaultPrinter.current', {
+                key,
+                alias: mapping.alias || i18n.t('common.notSet'),
+                role: mapping.role || i18n.t('common.notSet')
+              })
             });
           }
         },
         {
-          label: '清空默认设置',
+          label: i18n.t('tray.clearDefault'),
           click: () => {
             const mappings = printerMappings.getMappings();
             let changed = false;
@@ -341,14 +348,14 @@ function ensureTray() {
               emitPrinterMappings();
               dialog.showMessageBox({
                 type: 'info',
-                title: '默认打印机',
-                message: '已清除默认打印机设置。'
+                title: i18n.t('dialogs.defaultPrinter.title'),
+                message: i18n.t('dialogs.defaultPrinter.cleared')
               });
             } else {
               dialog.showMessageBox({
                 type: 'info',
-                title: '默认打印机',
-                message: '当前没有默认打印机。'
+                title: i18n.t('dialogs.defaultPrinter.title'),
+                message: i18n.t('dialogs.defaultPrinter.noDefaultMessage')
               });
             }
           }
@@ -357,19 +364,19 @@ function ensureTray() {
     },
     { type: 'separator' },
     {
-      label: '查看日志',
+      label: i18n.t('tray.viewLogs'),
       click: () => {
         const logPath = logger.getLogFile();
         dialog.showMessageBox({
           type: 'info',
-          title: '日志文件位置',
-          message: `日志文件位于:\n${logPath}`,
-          buttons: ['确定']
+          title: i18n.t('dialogs.logLocation.title'),
+          message: i18n.t('dialogs.logLocation.message', { path: logPath }),
+          buttons: [i18n.t('common.ok')]
         });
       }
     },
     {
-      label: '打开日志目录',
+      label: i18n.t('tray.openLogDir'),
       click: () => {
         const logPath = logger.getLogFile();
         const directory = path.dirname(logPath);
@@ -377,38 +384,38 @@ function ensureTray() {
       }
     },
     {
-      label: '最近测试记录',
+      label: i18n.t('tray.recentTests'),
       click: () => {
         const history = printHistory.getHistory();
         if (!history.length) {
           dialog.showMessageBox({
             type: 'info',
-            title: '打印历史',
-            message: '暂无测试记录。'
+            title: i18n.t('dialogs.printHistory.title'),
+            message: i18n.t('dialogs.printHistory.noRecords')
           });
           return;
         }
         const recent = history.slice(0, 5);
         const message = recent
           .map((item) => {
-            const status = item.status === 'success' ? '✅ 成功' : '❌ 失败';
+            const status = item.status === 'success' ? `✅ ${i18n.t('history.success')}` : `❌ ${i18n.t('history.failed')}`;
             const time = new Date(item.timestamp).toLocaleString();
-            const alias = item.alias ? `别名: ${item.alias}` : '';
-            const role = item.role ? `用途: ${item.role}` : '';
-            const detail = item.message ? `说明: ${item.message}` : '';
+            const alias = item.alias ? `${i18n.t('devices.alias')}: ${item.alias}` : '';
+            const role = item.role ? `${i18n.t('devices.role')}: ${item.role}` : '';
+            const detail = item.message ? `${i18n.t('history.details')}: ${item.message}` : '';
             return `${status} ${time}\n${alias} ${role}\n${detail}`.trim();
           })
           .join('\n\n');
         dialog.showMessageBox({
           type: 'info',
-          title: '最近打印记录',
+          title: i18n.t('dialogs.recentPrintHistory.title'),
           message
         });
       }
     },
     { type: 'separator' },
     {
-      label: '退出',
+      label: i18n.t('tray.quit'),
       click: () => {
         quitting = true;
         app.quit();
@@ -419,9 +426,30 @@ function ensureTray() {
   tray.setContextMenu(contextMenu);
 }
 
+function ensureTray() {
+  if (tray) {
+    updateTrayMenu();
+    return;
+  }
+  const icon = loadIcon({ template: process.platform === 'darwin' });
+  tray = new Tray(icon);
+  tray.setToolTip(i18n ? i18n.t('app.name') : 'Yepos Agent');
+  tray.on('click', () => {
+    if (!mainWindow) return;
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  updateTrayMenu();
+}
+
 async function bootstrap() {
   await app.whenReady();
   configStore.ensureDefaults();
+  
+  // Initialize i18n
+  const locale = configStore.get('locale') || DEFAULT_LANGUAGE;
+  i18n = getI18n(locale);
+  
   printerMappings.init(configStore);
   printHistory.init(configStore);
   global.sharedModules = { printerMappings, printHistory, tcpPrinterManager };
@@ -493,7 +521,8 @@ async function bootstrap() {
     tcpPrinterManager,
     logger,
     printerMappings,
-    printHistory
+    printHistory,
+    getI18n: () => i18n
   });
   remoteClient.start();
 
@@ -515,23 +544,48 @@ app.on('activate', () => {
     createWindow();
   } else {
     mainWindow.show();
+    mainWindow.focus();
   }
 });
 
-app.on('quit', async () => {
-  if (serverHandle) {
-    await stopServer(serverHandle);
-  }
-  usbManager.dispose();
-  telemetry.stop();
-  remoteClient?.stop();
-});
+// 单实例锁定：确保只有一个应用实例运行
+const gotTheLock = app.requestSingleInstanceLock();
 
-bootstrap().catch((err) => {
-  logger.error('Agent bootstrap failed', err);
-  dialog.showErrorBox('启动失败', err?.message || String(err));
+if (!gotTheLock) {
+  // 如果已经有实例在运行，退出当前实例
   app.quit();
-});
+} else {
+  // 处理第二个实例启动事件（用户再次打开应用）
+  app.on('second-instance', () => {
+    // 如果窗口已存在，显示并聚焦
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      // 如果窗口不存在，创建新窗口
+      createWindow();
+    }
+  });
+
+  app.on('quit', async () => {
+    if (serverHandle) {
+      await stopServer(serverHandle);
+    }
+    usbManager.dispose();
+    telemetry.stop();
+    remoteClient?.stop();
+  });
+
+  bootstrap().catch((err) => {
+    logger.error('Agent bootstrap failed', err);
+    const errorTitle = i18n ? i18n.t('dialogs.bootstrapError.title') : '启动失败';
+    dialog.showErrorBox(errorTitle, err?.message || String(err));
+    app.quit();
+  });
+}
 
 ipcMain.handle('agent:get-status', async () => {
   const entries = printerMappings.listEntries();
@@ -668,19 +722,21 @@ async function performTestPrint(payload = {}) {
   if (connectionType === 'tcp') {
     const { ip, port = 9100 } = payload;
     if (!ip) {
-      return { ok: false, error: '缺少 TCP 打印机 IP 地址' };
+      const errorMsg = i18n ? i18n.t('print.missingTcpIp') : '缺少 TCP 打印机 IP 地址';
+      return { ok: false, error: errorMsg };
     }
     const key = printerMappings.buildTcpKey(ip, port);
     try {
       const buffer = buildTestPayload({ connectionType: 'tcp', ip, port, alias, role });
       await tcpPrinterManager.print({ ip, port, data: buffer, encoding: 'buffer' });
+      const successMessage = i18n ? i18n.t('print.testSuccess') : '测试打印成功';
       printerMappings.updateMapping(key, {
         alias,
         role,
         isDefault: payload.isDefault,
         lastTest: {
           status: 'success',
-          message: '测试打印成功',
+          message: successMessage,
           timestamp
         }
       });
@@ -692,13 +748,14 @@ async function performTestPrint(payload = {}) {
         alias,
         role,
         status: 'success',
-        message: '测试打印成功'
+        message: successMessage
       });
       emitPrinterMappings();
       emitPrintHistory();
       return { ok: true };
     } catch (error) {
-      const message = error?.message || '测试打印失败';
+      const failMessage = i18n ? i18n.t('print.testFailed') : '测试打印失败';
+      const message = error?.message || failMessage;
       printerMappings.updateMapping(key, {
         alias,
         role,
@@ -727,19 +784,20 @@ async function performTestPrint(payload = {}) {
 
   const { vendorId, productId } = payload;
   if (typeof vendorId !== 'number' || typeof productId !== 'number') {
-    return { ok: false, error: '缺少 vendorId / productId' };
+    return { ok: false, error: i18n ? i18n.t('print.missingVendorProduct') : '缺少 vendorId / productId' };
   }
   const key = getMappingKey(vendorId, productId);
   try {
     const buffer = buildTestPayload({ connectionType: 'usb', vendorId, productId, alias, role });
     await usbManager.print({ data: buffer, encoding: 'buffer', vendorId, productId });
+    const successMessage = i18n ? i18n.t('print.testSuccess') : '测试打印成功';
     printerMappings.updateMapping(key, {
       alias,
       role,
       isDefault: payload.isDefault,
       lastTest: {
         status: 'success',
-        message: '测试打印成功',
+        message: successMessage,
         timestamp
       }
     });
@@ -751,13 +809,14 @@ async function performTestPrint(payload = {}) {
       alias,
       role,
       status: 'success',
-      message: '测试打印成功'
+      message: successMessage
     });
     emitPrinterMappings();
     emitPrintHistory();
     return { ok: true };
   } catch (error) {
-    const message = error?.message || '测试打印失败';
+    const failMessage = i18n ? i18n.t('print.testFailed') : '测试打印失败';
+    const message = error?.message || failMessage;
     printerMappings.updateMapping(key, {
       alias,
       role,
@@ -801,4 +860,53 @@ ipcMain.handle('agent:restart-app', async () => {
   app.relaunch();
   app.exit(0);
   return { ok: true };
+});
+
+ipcMain.handle('agent:get-translations', async (_event, locale) => {
+  if (!locale) {
+    locale = configStore.get('locale') || DEFAULT_LANGUAGE;
+  }
+  if (i18n) {
+    i18n.setLocale(locale);
+  } else {
+    i18n = getI18n(locale);
+  }
+  const { LANGUAGES } = require('../i18n');
+  return {
+    locale: i18n.getLocale(),
+    translations: LANGUAGES[i18n.getLocale()] || LANGUAGES[DEFAULT_LANGUAGE]
+  };
+});
+
+ipcMain.handle('agent:get-locale', async () => {
+  return configStore.get('locale') || DEFAULT_LANGUAGE;
+});
+
+ipcMain.handle('agent:set-locale', async (_event, locale) => {
+  if (locale && (locale === 'zh-CN' || locale === 'en-US')) {
+    configStore.set('locale', locale);
+    if (i18n) {
+      i18n.setLocale(locale);
+    } else {
+      i18n = getI18n(locale);
+    }
+    updateTrayMenu();
+    if (mainWindow?.webContents) {
+      mainWindow.webContents.send('agent:locale-changed', { locale });
+    }
+    return { ok: true, locale };
+  }
+  return { ok: false, error: 'invalid-locale' };
+});
+
+// Watch for locale changes
+configStore.onDidChange('locale', () => {
+  const locale = configStore.get('locale') || DEFAULT_LANGUAGE;
+  if (i18n) {
+    i18n.setLocale(locale);
+    updateTrayMenu();
+  }
+  if (mainWindow?.webContents) {
+    mainWindow.webContents.send('agent:locale-changed', { locale });
+  }
 });

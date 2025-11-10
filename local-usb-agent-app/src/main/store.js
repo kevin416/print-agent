@@ -160,6 +160,10 @@ const schema = {
         }
       }
     }
+  },
+  locale: {
+    type: 'string',
+    default: 'zh-CN'
   }
 };
 
@@ -261,6 +265,11 @@ const store = new Store({ schema, watch: true, migrations: {
       preferences.autoTestOnAttach = false;
     }
     store.set('preferences', preferences);
+  },
+  '0.5.0': (store) => {
+    if (!store.get('locale')) {
+      store.set('locale', 'zh-CN');
+    }
   }
 }});
 

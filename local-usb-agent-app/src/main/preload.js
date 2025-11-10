@@ -27,5 +27,9 @@ contextBridge.exposeInMainWorld('agent', {
   onOnboardingUpdated: (listener) => ipcRenderer.on('agent:onboarding-updated', (_event, payload) => listener(payload)),
   onUsbHotplug: (listener) => ipcRenderer.on('agent:usb-hotplug', (_event, payload) => listener(payload)),
   quitApp: () => ipcRenderer.invoke('agent:quit-app'),
-  restartApp: () => ipcRenderer.invoke('agent:restart-app')
+  restartApp: () => ipcRenderer.invoke('agent:restart-app'),
+  getTranslations: (locale) => ipcRenderer.invoke('agent:get-translations', locale),
+  getLocale: () => ipcRenderer.invoke('agent:get-locale'),
+  setLocale: (locale) => ipcRenderer.invoke('agent:set-locale', locale),
+  onLocaleChanged: (listener) => ipcRenderer.on('agent:locale-changed', (_event, payload) => listener(payload))
 });

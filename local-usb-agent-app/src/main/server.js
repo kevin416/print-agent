@@ -55,11 +55,17 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
   const server = http.createServer(app);
 
   await new Promise((resolve, reject) => {
-    server.listen(port, (err) => {
-      if (err) {
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        const error = new Error(`端口 ${port} 已被占用，可能已有实例在运行`);
+        error.code = 'EADDRINUSE';
+        reject(error);
+      } else {
         reject(err);
-        return;
       }
+    });
+    
+    server.listen(port, () => {
       logger.info('Local agent server listening', { port });
       resolve();
     });
