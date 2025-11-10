@@ -1136,8 +1136,9 @@ app.get('/api/client-downloads', async (req, res) => {
         if (file.endsWith('.exe') && (file.includes('Setup') || file.includes('setup'))) {
           if (!downloads.win.exe) {
             downloads.win.exe = `/updates/local-usb-agent/win/${file}`
-            // Extract version from filename (e.g., "Yepos Agent Setup-0.2.2.exe" or "LocalUSBPrintAgent-Setup-0.2.0.exe")
-            const versionMatch = file.match(/-(\d+\.\d+\.\d+)\.exe$/i)
+            // Extract version from filename (e.g., "Yepos Agent Setup 0.2.5.exe" or "Yepos Agent Setup-0.2.2.exe")
+            // Support both space and dash separators
+            const versionMatch = file.match(/(?:[\s-])(\d+\.\d+\.\d+)\.exe$/i)
             if (versionMatch && !downloads.win.version) {
               downloads.win.version = versionMatch[1]
             }
@@ -1146,7 +1147,8 @@ app.get('/api/client-downloads', async (req, res) => {
           if (!downloads.win.zip) {
             downloads.win.zip = `/updates/local-usb-agent/win/${file}`
             if (!downloads.win.version) {
-              const versionMatch = file.match(/-(\d+\.\d+\.\d+)-win/i)
+              // Support both space and dash separators
+              const versionMatch = file.match(/(?:[\s-])(\d+\.\d+\.\d+)(?:[\s-]win|\.win)/i)
               if (versionMatch) {
                 downloads.win.version = versionMatch[1]
               }

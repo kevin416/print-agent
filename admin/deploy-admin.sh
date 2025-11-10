@@ -54,8 +54,45 @@ if [ ! -d "$UPDATES_DIR" ]; then
 else
     echo "   源目录: $UPDATES_DIR"
     echo "   目标: $SERVER_USER@$SERVER_HOST:~/print-agent/updates/"
-    rsync $SSH_OPTS -av --delete "$UPDATES_DIR/" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
-    echo "✅ 客户端安装包同步完成"
+    
+    # 检查是否有 rsync 命令
+    if command -v rsync >/dev/null 2>&1; then
+        echo "   使用 rsync 同步..."
+        rsync $SSH_OPTS -av --delete "$UPDATES_DIR/" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
+        echo "✅ 客户端安装包同步完成"
+    else
+        echo "   ⚠️  rsync 未找到，使用 scp 上传..."
+        echo "   提示：安装 rsync 可以获得更好的性能（可选）"
+        
+        # 使用 scp 递归上传
+        # 先创建远程目录结构
+        ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "mkdir -p ~/print-agent/updates/local-usb-agent/{mac,win,linux,stable}"
+        
+        # 上传文件
+        if [ -d "$UPDATES_DIR/local-usb-agent" ]; then
+            echo "   上传 Windows 文件..."
+            if [ -d "$UPDATES_DIR/local-usb-agent/win" ]; then
+                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/win"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/win/ 2>/dev/null || true
+            fi
+            
+            echo "   上传 macOS 文件..."
+            if [ -d "$UPDATES_DIR/local-usb-agent/mac" ]; then
+                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/mac"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/mac/ 2>/dev/null || true
+            fi
+            
+            echo "   上传 Linux 文件..."
+            if [ -d "$UPDATES_DIR/local-usb-agent/linux" ]; then
+                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/linux"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/linux/ 2>/dev/null || true
+            fi
+            
+            echo "   上传稳定通道 YAML 文件..."
+            if [ -d "$UPDATES_DIR/local-usb-agent/stable" ]; then
+                scp $SSH_OPTS "$UPDATES_DIR/local-usb-agent/stable"/* $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/stable/ 2>/dev/null || true
+            fi
+        fi
+        
+        echo "✅ 客户端安装包上传完成"
+    fi
 fi
 
 # 部署
