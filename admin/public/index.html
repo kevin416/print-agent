@@ -455,18 +455,9 @@
             <p>统一管理各分店本地打印代理，查看连接状态、心跳信息，并进行远程配置。</p>
             <div class="download-links">
                 <span>客户端下载：</span>
-                <a class="btn btn-small" href="/updates/local-usb-agent/win/LocalUSBPrintAgent-Setup-0.2.0.exe" target="_blank" rel="noopener" download>
-                    🪟 Windows 安装包 (.exe)
-                </a>
-                <a class="btn btn-small" href="/updates/local-usb-agent/win/LocalUSBPrintAgent-0.2.0-win64.zip" target="_blank" rel="noopener" download>
-                    🪟 Windows 免安装 (.zip)
-                </a>
-                <a class="btn btn-small" href="/updates/local-usb-agent/mac/LocalUSBPrintAgent-0.2.0-arm64.dmg" target="_blank" rel="noopener" download>
-                    🍎 macOS 安装包 (.dmg)
-                </a>
-                <a class="btn btn-small" href="/updates/local-usb-agent/mac/LocalUSBPrintAgent-0.2.0-arm64-mac.zip" target="_blank" rel="noopener" download>
-                    🍎 macOS 免安装 (.zip)
-                </a>
+                <div id="download-links-container">
+                    <span class="muted">加载中...</span>
+                </div>
             </div>
             <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #8b5cf6;">
                 <strong>🖥️ RestDesk 远程运维信息</strong>
@@ -786,6 +777,66 @@ ID服务器: 90.195.120.165:21116
             return String(value)
                 .replace(/\\/g, '\\\\')
                 .replace(/'/g, "\\'");
+        }
+
+        // 加载客户端下载链接
+        async function loadDownloadLinks() {
+            try {
+                const response = await fetch('/api/client-downloads');
+                const data = await response.json();
+                const container = document.getElementById('download-links-container');
+                
+                if (!data.success || !data.downloads) {
+                    container.innerHTML = '<span class="muted">暂无可用下载</span>';
+                    return;
+                }
+                
+                const downloads = data.downloads;
+                const links = [];
+                
+                // Windows 下载链接
+                if (downloads.win.exe || downloads.win.zip) {
+                    const version = downloads.win.version ? ` v${downloads.win.version}` : '';
+                    if (downloads.win.exe) {
+                        links.push(`<a class="btn btn-small" href="${downloads.win.exe}" target="_blank" rel="noopener" download>🪟 Windows 安装包 (.exe)${version}</a>`);
+                    }
+                    if (downloads.win.zip) {
+                        links.push(`<a class="btn btn-small" href="${downloads.win.zip}" target="_blank" rel="noopener" download>🪟 Windows 免安装 (.zip)${version}</a>`);
+                    }
+                }
+                
+                // macOS 下载链接
+                if (downloads.mac.dmg || downloads.mac.zip) {
+                    const version = downloads.mac.version ? ` v${downloads.mac.version}` : '';
+                    if (downloads.mac.dmg) {
+                        links.push(`<a class="btn btn-small" href="${downloads.mac.dmg}" target="_blank" rel="noopener" download>🍎 macOS 安装包 (.dmg)${version}</a>`);
+                    }
+                    if (downloads.mac.zip) {
+                        links.push(`<a class="btn btn-small" href="${downloads.mac.zip}" target="_blank" rel="noopener" download>🍎 macOS 免安装 (.zip)${version}</a>`);
+                    }
+                }
+                
+                // Linux 下载链接
+                if (downloads.linux.appimage || downloads.linux.deb) {
+                    const version = downloads.linux.version ? ` v${downloads.linux.version}` : '';
+                    if (downloads.linux.appimage) {
+                        links.push(`<a class="btn btn-small" href="${downloads.linux.appimage}" target="_blank" rel="noopener" download>🐧 Linux AppImage${version}</a>`);
+                    }
+                    if (downloads.linux.deb) {
+                        links.push(`<a class="btn btn-small" href="${downloads.linux.deb}" target="_blank" rel="noopener" download>🐧 Linux DEB${version}</a>`);
+                    }
+                }
+                
+                if (links.length === 0) {
+                    container.innerHTML = '<span class="muted">暂无可用下载</span>';
+                } else {
+                    container.innerHTML = links.join('');
+                }
+            } catch (error) {
+                console.error('加载下载链接失败:', error);
+                const container = document.getElementById('download-links-container');
+                container.innerHTML = '<span class="muted">加载失败</span>';
+            }
         }
 
         // 加载数据
@@ -1834,8 +1885,11 @@ ID服务器: 90.195.120.165:21116
         }
 
         // 定期刷新数据
+        loadDownloadLinks();
         loadData();
         setInterval(loadData, 5000);
+        // 下载链接每30秒刷新一次（因为更新频率较低）
+        setInterval(loadDownloadLinks, 30000);
     </script>
 </body>
 </html>

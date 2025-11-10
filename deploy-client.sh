@@ -138,21 +138,113 @@ ARCH=$(uname -m)
 
 if [[ "$PLATFORM" == "Darwin" ]]; then
     echo "检测到 macOS 平台"
-    if [[ "$ARCH" == "arm64" ]]; then
-        echo "打包 macOS ARM64 版本..."
-        npx electron-builder --mac --arm64
-    else
-        echo "打包 macOS x64 版本..."
-        npx electron-builder --mac --x64
-    fi
+    echo ""
+    echo "可用的打包选项："
+    echo "  1) macOS ARM64 (Apple Silicon)"
+    echo "  2) macOS x64 (Intel)"
+    echo "  3) Linux (AppImage + DEB)"
+    echo "  4) 所有 macOS 版本 (ARM64 + x64)"
+    echo "  5) macOS + Linux"
+    echo ""
+    echo "⚠️  注意：在 macOS 上无法直接打包 Windows 版本"
+    echo "   如需打包 Windows 版本，请在 Windows 系统上运行此脚本"
+    echo ""
+    read -p "请选择打包选项 (1-5) [默认: 1]: " BUILD_CHOICE
+    BUILD_CHOICE=${BUILD_CHOICE:-1}
+    
+    case $BUILD_CHOICE in
+        1)
+            echo "打包 macOS ARM64 版本..."
+            npx electron-builder --mac --arm64
+            ;;
+        2)
+            echo "打包 macOS x64 版本..."
+            npx electron-builder --mac --x64
+            ;;
+        3)
+            echo "打包 Linux 版本..."
+            npx electron-builder --linux
+            ;;
+        4)
+            echo "打包所有 macOS 版本 (ARM64 + x64)..."
+            npx electron-builder --mac --arm64 --x64
+            ;;
+        5)
+            echo "打包 macOS + Linux 版本..."
+            npx electron-builder --mac --linux
+            ;;
+        *)
+            echo "❌ 错误：无效的选择"
+            exit 1
+            ;;
+    esac
 elif [[ "$PLATFORM" == "Linux" ]]; then
     echo "检测到 Linux 平台"
-    echo "打包 Linux 版本..."
-    npx electron-builder --linux
+    echo ""
+    echo "可用的打包选项："
+    echo "  1) Linux (AppImage + DEB)"
+    echo "  2) Windows x64 (需要 Wine)"
+    echo "  3) Linux + Windows"
+    echo ""
+    read -p "请选择打包选项 (1-3) [默认: 1]: " BUILD_CHOICE
+    BUILD_CHOICE=${BUILD_CHOICE:-1}
+    
+    case $BUILD_CHOICE in
+        1)
+            echo "打包 Linux 版本..."
+            npx electron-builder --linux
+            ;;
+        2)
+            echo "打包 Windows x64 版本 (需要 Wine)..."
+            if ! command -v wine &> /dev/null; then
+                echo "⚠️  警告：未检测到 Wine，Windows 打包可能失败"
+                echo "   安装 Wine: sudo apt-get install wine (Ubuntu/Debian)"
+                read -p "是否继续？(y/n) " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    exit 0
+                fi
+            fi
+            npx electron-builder --win --x64
+            ;;
+        3)
+            echo "打包 Linux + Windows 版本..."
+            npx electron-builder --linux --win --x64
+            ;;
+        *)
+            echo "❌ 错误：无效的选择"
+            exit 1
+            ;;
+    esac
 elif [[ "$PLATFORM" == MINGW* ]] || [[ "$PLATFORM" == MSYS* ]] || [[ "$PLATFORM" == CYGWIN* ]]; then
     echo "检测到 Windows 平台"
-    echo "打包 Windows x64 版本..."
-    npx electron-builder --win --x64
+    echo ""
+    echo "可用的打包选项："
+    echo "  1) Windows x64 (NSIS 安装程序 + ZIP)"
+    echo "  2) Linux (AppImage + DEB)"
+    echo "  3) Windows + Linux"
+    echo ""
+    read -p "请选择打包选项 (1-3) [默认: 1]: " BUILD_CHOICE
+    BUILD_CHOICE=${BUILD_CHOICE:-1}
+    
+    case $BUILD_CHOICE in
+        1)
+            echo "打包 Windows x64 版本..."
+            npx electron-builder --win --x64
+            ;;
+        2)
+            echo "打包 Linux 版本..."
+            npx electron-builder --linux
+            ;;
+        3)
+            echo "打包 Windows + Linux 版本..."
+            npx electron-builder --win --x64 --linux
+            ;;
+        *)
+            echo "❌ 错误：无效的选择"
+            exit 1
+            ;;
+    esac
 else
     echo "⚠️  未知平台，使用默认打包命令..."
     npm run build

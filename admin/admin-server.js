@@ -1044,9 +1044,158 @@ app.get('/api/deploy-script', async (req, res) => {
 })
 
 /**
- * GET /api/shops/company-map
- * Returns mapping for manager_next environment generation
+ * Get latest client download links
  */
+app.get('/api/client-downloads', async (req, res) => {
+  try {
+    const updatesPath = path.join(UPDATES_DIR, 'local-usb-agent')
+    const downloads = {
+      win: { exe: null, zip: null, version: null },
+      mac: { dmg: null, zip: null, version: null },
+      linux: { appimage: null, deb: null, version: null }
+    }
+
+    // Scan Windows files
+    const winDir = path.join(updatesPath, 'win')
+    if (await fs.pathExists(winDir)) {
+      const winFiles = await fs.readdir(winDir)
+      // Sort files by modification time (newest first)
+      const winFilesWithStats = await Promise.all(
+        winFiles.map(async (file) => {
+          const filePath = path.join(winDir, file)
+          try {
+            const stats = await fs.stat(filePath)
+            return { file, mtime: stats.mtime }
+          } catch {
+            return { file, mtime: new Date(0) }
+          }
+        })
+      )
+      winFilesWithStats.sort((a, b) => b.mtime - a.mtime)
+      
+      for (const { file } of winFilesWithStats) {
+        if (file.endsWith('.exe') && (file.includes('Setup') || file.includes('setup'))) {
+          if (!downloads.win.exe) {
+            downloads.win.exe = `/updates/local-usb-agent/win/${file}`
+            // Extract version from filename (e.g., "Yepos Agent Setup-0.2.2.exe" or "LocalUSBPrintAgent-Setup-0.2.0.exe")
+            const versionMatch = file.match(/-(\d+\.\d+\.\d+)\.exe$/i)
+            if (versionMatch && !downloads.win.version) {
+              downloads.win.version = versionMatch[1]
+            }
+          }
+        } else if (file.endsWith('.zip') && (file.includes('win') || file.includes('win64'))) {
+          if (!downloads.win.zip) {
+            downloads.win.zip = `/updates/local-usb-agent/win/${file}`
+            if (!downloads.win.version) {
+              const versionMatch = file.match(/-(\d+\.\d+\.\d+)-win/i)
+              if (versionMatch) {
+                downloads.win.version = versionMatch[1]
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Scan macOS files
+    const macDir = path.join(updatesPath, 'mac')
+    if (await fs.pathExists(macDir)) {
+      const macFiles = await fs.readdir(macDir)
+      // Sort files by modification time (newest first)
+      const macFilesWithStats = await Promise.all(
+        macFiles.map(async (file) => {
+          const filePath = path.join(macDir, file)
+          try {
+            const stats = await fs.stat(filePath)
+            return { file, mtime: stats.mtime }
+          } catch {
+            return { file, mtime: new Date(0) }
+          }
+        })
+      )
+      macFilesWithStats.sort((a, b) => b.mtime - a.mtime)
+      
+      for (const { file } of macFilesWithStats) {
+        if (file.endsWith('.dmg')) {
+          if (!downloads.mac.dmg) {
+            downloads.mac.dmg = `/updates/local-usb-agent/mac/${file}`
+            // Extract version from filename (e.g., "Yepos Agent-0.2.2.dmg")
+            const versionMatch = file.match(/-(\d+\.\d+\.\d+)\.dmg$/i)
+            if (versionMatch && !downloads.mac.version) {
+              downloads.mac.version = versionMatch[1]
+            }
+          }
+        } else if (file.endsWith('.zip') && (file.includes('mac') || file.includes('arm64') || file.includes('x64'))) {
+          if (!downloads.mac.zip) {
+            downloads.mac.zip = `/updates/local-usb-agent/mac/${file}`
+            if (!downloads.mac.version) {
+              const versionMatch = file.match(/-(\d+\.\d+\.\d+)-/i)
+              if (versionMatch) {
+                downloads.mac.version = versionMatch[1]
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Scan Linux files
+    const linuxDir = path.join(updatesPath, 'linux')
+    if (await fs.pathExists(linuxDir)) {
+      const linuxFiles = await fs.readdir(linuxDir)
+      for (const file of linuxFiles) {
+        if (file.endsWith('.AppImage')) {
+          downloads.linux.appimage = `/updates/local-usb-agent/linux/${file}`
+          const versionMatch = file.match(/-(\d+\.\d+\.\d+)-/)
+          if (versionMatch && !downloads.linux.version) {
+            downloads.linux.version = versionMatch[1]
+          }
+        } else if (file.endsWith('.deb')) {
+          downloads.linux.deb = `/updates/local-usb-agent/linux/${file}`
+          if (!downloads.linux.version) {
+            const versionMatch = file.match(/-(\d+\.\d+\.\d+)-/)
+            if (versionMatch) {
+              downloads.linux.version = versionMatch[1]
+            }
+          }
+        }
+      }
+    }
+
+    // Try to get version from YAML files
+    const stableDir = path.join(updatesPath, 'stable')
+    if (await fs.pathExists(stableDir)) {
+      try {
+        const yamlFiles = await fs.readdir(stableDir)
+        for (const yamlFile of yamlFiles) {
+          if (yamlFile.endsWith('.yml') || yamlFile.endsWith('.yaml')) {
+            const yamlPath = path.join(stableDir, yamlFile)
+            const yamlContent = await fs.readFile(yamlPath, 'utf-8')
+            const versionMatch = yamlContent.match(/version:\s*['"]?(\d+\.\d+\.\d+)['"]?/i)
+            if (versionMatch) {
+              const version = versionMatch[1]
+              if (yamlFile.includes('mac') && !downloads.mac.version) {
+                downloads.mac.version = version
+              } else if (yamlFile.includes('linux') && !downloads.linux.version) {
+                downloads.linux.version = version
+              } else if (!yamlFile.includes('mac') && !yamlFile.includes('linux') && !downloads.win.version) {
+                downloads.win.version = version
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[admin] Failed to read YAML files:', error.message)
+      }
+    }
+
+    res.json({ success: true, downloads })
+  } catch (error) {
+    console.error('[admin] Failed to get client downloads:', error)
+    res.status(500).json({ success: false, error: error.message })
+  }
+})
+
 app.get('/api/shops/company-map', async (req, res) => {
   try {
     const data = await loadData()
