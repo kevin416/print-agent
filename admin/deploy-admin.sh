@@ -18,21 +18,37 @@ echo ""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 上传文件
+# 配置 SSH agent 以避免重复输入密码
+echo "🔐 配置 SSH agent..."
+if [ -z "$SSH_AUTH_SOCK" ]; then
+    # 启动 SSH agent（如果未运行）
+    eval "$(ssh-agent -s)" > /dev/null
+    # 添加默认 SSH 密钥
+    if [ -f ~/.ssh/id_ed25519 ]; then
+        ssh-add ~/.ssh/id_ed25519 2>/dev/null || true
+    elif [ -f ~/.ssh/id_rsa ]; then
+        ssh-add ~/.ssh/id_rsa 2>/dev/null || true
+    fi
+fi
+
+# 使用 SSH ControlMaster 复用连接（可选，进一步优化）
+SSH_OPTS="-o ControlMaster=auto -o ControlPath=~/.ssh/control-%r@%h:%p -o ControlPersist=300"
+
+# 上传文件（使用 SSH 选项）
 echo "📤 上传管理后台文件..."
-scp admin-server.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
-scp package.json $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
-scp ecosystem.config.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
-scp nginx.conf $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
-scp -r public $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
+scp $SSH_OPTS admin-server.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
+scp $SSH_OPTS package.json $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
+scp $SSH_OPTS ecosystem.config.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
+scp $SSH_OPTS nginx.conf $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
+scp $SSH_OPTS -r public $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 
 echo "📦 同步客户端安装包..."
-rsync -av --delete ../updates/ $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
+rsync $SSH_OPTS -av --delete ../updates/ $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
 
 # 部署
 echo ""
 echo "🔧 部署服务..."
-ssh $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS' bash -s" << 'ENDSSH'
+ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS' bash -s" << 'ENDSSH'
 set -e
 
 cd ~/print-agent/admin
@@ -54,7 +70,7 @@ ENDSSH
 
 echo ""
 echo "📝 配置 Nginx..."
-ssh $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS' bash -s" << 'ENDSSH'
+ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS' bash -s" << 'ENDSSH'
 set -e
 
 cd ~/print-agent/admin
@@ -94,3 +110,6 @@ ENDSSH
 echo ""
 echo "✅ Nginx 配置完成！"
 echo ""
+
+# 清理 SSH ControlMaster 连接（可选）
+ssh $SSH_OPTS -O exit $SERVER_USER@$SERVER_HOST 2>/dev/null || true

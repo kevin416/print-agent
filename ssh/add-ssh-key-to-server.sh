@@ -2,6 +2,8 @@
 
 # 🔐 添加SSH公钥到服务器脚本
 # 用途：将当前电脑的SSH公钥添加到远程服务器的authorized_keys文件中
+# 注意：此脚本要求当前电脑已有SSH权限！
+# 如果当前电脑没有SSH权限，请使用 add-new-computer-key.sh 脚本（从已有权限的电脑运行）
 
 set -euo pipefail
 
@@ -58,13 +60,29 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# 检查当前电脑是否可以SSH到服务器
+echo "🔍 检查当前电脑的SSH权限..."
+if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$SERVER" "echo 'OK'" >/dev/null 2>&1; then
+    echo -e "${RED}❌ 当前电脑无法SSH到服务器！${NC}"
+    echo ""
+    echo "此脚本要求当前电脑已有SSH权限。"
+    echo ""
+    echo "如果这是新电脑，请："
+    echo "  1. 从已有权限的电脑运行: ./add-new-computer-key.sh"
+    echo "  2. 或通过服务器控制台直接添加公钥"
+    echo "  3. 或如果服务器支持密码认证，可以先使用密码登录"
+    echo ""
+    echo "详细说明请查看: SSH_ACCESS_SETUP.md"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ 当前电脑已有SSH权限${NC}"
+
 # 方法1: 尝试使用 ssh-copy-id（最简单）
 if command -v ssh-copy-id >/dev/null 2>&1; then
     echo ""
     echo "🚀 使用 ssh-copy-id 添加公钥..."
-    ssh-copy-id -i "$PUBKEY_FILE" "$SERVER"
-    
-    if [ $? -eq 0 ]; then
+    if ssh-copy-id -i "$PUBKEY_FILE" "$SERVER" 2>/dev/null; then
         echo ""
         echo -e "${GREEN}✅ 公钥已成功添加到服务器！${NC}"
         echo ""

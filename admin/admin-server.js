@@ -27,6 +27,7 @@ console.log('[admin] 默认 WebSocket 地址:', DEFAULT_WS_URL)
 const DATA_DIR = path.join(__dirname, 'data')
 const DATA_FILE = path.join(DATA_DIR, 'shops.json')
 const HEARTBEAT_FILE = path.join(DATA_DIR, 'agent-heartbeats.json')
+const NOTES_FILE = path.join(DATA_DIR, 'notes.json')
 const HEARTBEAT_OFFLINE_THRESHOLD_MS = Number(process.env.HEARTBEAT_OFFLINE_THRESHOLD_MS || 90_000)
 const UPDATES_DIR = path.join(__dirname, '..', 'updates')
 
@@ -99,6 +100,20 @@ async function ensureHeartbeatFile() {
       HEARTBEAT_FILE,
       {
         agents: {},
+        updatedAt: new Date().toISOString()
+      },
+      { spaces: 2 }
+    )
+  }
+}
+
+async function ensureNotesFile() {
+  await fs.ensureDir(DATA_DIR)
+  if (!(await fs.pathExists(NOTES_FILE))) {
+    await fs.writeJson(
+      NOTES_FILE,
+      {
+        notes: [],
         updatedAt: new Date().toISOString()
       },
       { spaces: 2 }
@@ -199,6 +214,50 @@ async function loadHeartbeatCache() {
     // ignore
   }
   return { agents: {}, updatedAt: null }
+}
+
+/**
+ * Load notes data
+ */
+async function loadNotes() {
+  await ensureNotesFile()
+  try {
+    const raw = await fs.readJson(NOTES_FILE)
+    let notes = []
+
+    if (Array.isArray(raw?.notes)) {
+      notes = raw.notes
+    } else if (Array.isArray(raw)) {
+      notes = raw
+    }
+
+    // Ensure each note has required fields
+    notes = notes.map((note) => ({
+      id: note.id || String(Date.now() + Math.random()),
+      title: note.title || '',
+      content: note.content || '',
+      createdAt: note.createdAt || new Date().toISOString(),
+      updatedAt: note.updatedAt || new Date().toISOString()
+    }))
+
+    return { notes }
+  } catch (error) {
+    console.error('[admin] Failed to read notes file:', error)
+    return { notes: [] }
+  }
+}
+
+/**
+ * Save notes data
+ */
+async function saveNotes(notes) {
+  await ensureNotesFile()
+  const payload = {
+    notes: Array.isArray(notes) ? notes : [],
+    updatedAt: new Date().toISOString()
+  }
+  await fs.writeJson(NOTES_FILE, payload, { spaces: 2 })
+  return payload
 }
 
 function normaliseLogs(logs) {
@@ -1221,6 +1280,122 @@ app.get('/api/shops/company-map', async (req, res) => {
   } catch (error) {
     console.error('[admin] Failed to build company map:', error)
     res.status(500).json({ success: false, error: '生成映射失败' })
+  }
+})
+
+/**
+ * GET /api/notes
+ */
+app.get('/api/notes', async (req, res) => {
+  try {
+    const data = await loadNotes()
+    res.json({
+      success: true,
+      notes: data.notes,
+      total: data.notes.length
+    })
+  } catch (error) {
+    console.error('[admin] Failed to load notes:', error)
+    res.status(500).json({ success: false, error: '无法获取笔记数据' })
+  }
+})
+
+/**
+ * POST /api/notes
+ */
+app.post('/api/notes', async (req, res) => {
+  const title = String(req.body?.title || '').trim()
+  const content = String(req.body?.content || '').trim()
+
+  if (!title) {
+    return res.status(400).json({ success: false, error: '标题不能为空' })
+  }
+
+  try {
+    const data = await loadNotes()
+    const now = new Date().toISOString()
+    const newNote = {
+      id: String(Date.now() + Math.random()),
+      title,
+      content,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    data.notes.push(newNote)
+    await saveNotes(data.notes)
+
+    res.json({ success: true, note: newNote })
+  } catch (error) {
+    console.error('[admin] Failed to create note:', error)
+    res.status(500).json({ success: false, error: '创建笔记失败' })
+  }
+})
+
+/**
+ * PUT /api/notes/:id
+ */
+app.put('/api/notes/:id', async (req, res) => {
+  const noteId = String(req.params.id || '').trim()
+  if (!noteId) {
+    return res.status(400).json({ success: false, error: '笔记ID无效' })
+  }
+
+  const title = req.body?.title !== undefined ? String(req.body.title).trim() : undefined
+  const content = req.body?.content !== undefined ? String(req.body.content).trim() : undefined
+
+  if (title !== undefined && !title) {
+    return res.status(400).json({ success: false, error: '标题不能为空' })
+  }
+
+  try {
+    const data = await loadNotes()
+    const noteIndex = data.notes.findIndex((note) => note.id === noteId)
+
+    if (noteIndex === -1) {
+      return res.status(404).json({ success: false, error: '笔记不存在' })
+    }
+
+    const note = data.notes[noteIndex]
+    if (title !== undefined) {
+      note.title = title
+    }
+    if (content !== undefined) {
+      note.content = content
+    }
+    note.updatedAt = new Date().toISOString()
+
+    await saveNotes(data.notes)
+
+    res.json({ success: true, note })
+  } catch (error) {
+    console.error('[admin] Failed to update note:', error)
+    res.status(500).json({ success: false, error: '更新笔记失败' })
+  }
+})
+
+/**
+ * DELETE /api/notes/:id
+ */
+app.delete('/api/notes/:id', async (req, res) => {
+  const noteId = String(req.params.id || '').trim()
+  if (!noteId) {
+    return res.status(400).json({ success: false, error: '笔记ID无效' })
+  }
+
+  try {
+    const data = await loadNotes()
+    const filtered = data.notes.filter((note) => note.id !== noteId)
+
+    if (filtered.length === data.notes.length) {
+      return res.status(404).json({ success: false, error: '笔记不存在' })
+    }
+
+    await saveNotes(filtered)
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[admin] Failed to delete note:', error)
+    res.status(500).json({ success: false, error: '删除笔记失败' })
   }
 })
 

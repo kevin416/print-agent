@@ -361,12 +361,65 @@
         }
 
         .form-group input,
-        .form-group select {
+        .form-group select,
+        .form-group textarea {
             width: 100%;
             padding: 10px;
             border: 1px solid #d1d5db;
             border-radius: 6px;
             font-size: 14px;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: inherit;
+        }
+
+        .note-item {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            transition: box-shadow 0.3s;
+            background: #f9fafb;
+        }
+
+        .note-item:hover {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .note-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .note-content {
+            color: #666;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin-bottom: 10px;
+        }
+
+        .note-meta {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 10px;
+        }
+
+        .note-actions {
+            display: flex;
+            gap: 8px;
         }
 
         .deploy-command {
@@ -527,6 +580,13 @@ ID服务器: 90.195.120.165:21116
                 <h2>异常与告警</h2>
                 <div id="alertsList" class="muted">暂无异常</div>
             </div>
+            <div class="card">
+                <h2>
+                    笔记管理
+                    <button class="btn btn-success" onclick="showAddNoteModal()">+ 添加笔记</button>
+                </h2>
+                <div id="notesList">加载中...</div>
+            </div>
         </div>
     </div>
 
@@ -673,6 +733,30 @@ ID服务器: 90.195.120.165:21116
         </div>
     </div>
 
+    <!-- 添加/编辑笔记模态框 -->
+    <div class="modal" id="noteModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="noteModalTitle">添加笔记</h3>
+                <button class="close-btn" onclick="closeNoteModal()">&times;</button>
+            </div>
+            <form id="noteForm">
+                <div class="form-group">
+                    <label>标题 *</label>
+                    <input type="text" id="noteTitle" required placeholder="请输入笔记标题">
+                </div>
+                <div class="form-group">
+                    <label>内容</label>
+                    <textarea id="noteContent" placeholder="请输入笔记内容"></textarea>
+                </div>
+                <div style="text-align: right; margin-top: 20px;">
+                    <button type="button" class="btn" onclick="closeNoteModal()">取消</button>
+                    <button type="submit" class="btn btn-success" id="noteSubmitBtn">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         let currentShopId = null;
         let shops = [];
@@ -683,6 +767,9 @@ ID服务器: 90.195.120.165:21116
         let editingPrinterOriginalIp = null;
         let remoteConfigAgent = null;
         let remoteConfigPrinterMap = {};
+        let notes = [];
+        let isEditingNote = false;
+        let editingNoteId = null;
 
         const normalizePrinterType = (type) => {
             if (!type) return 'Kitchen';
@@ -842,21 +929,24 @@ ID服务器: 90.195.120.165:21116
         // 加载数据
         async function loadData() {
             try {
-                const [shopsRes, agentsRes, heartbeatRes] = await Promise.all([
+                const [shopsRes, agentsRes, heartbeatRes, notesRes] = await Promise.all([
                     fetch('/api/shops'),
                     fetch('/api/agents'),
-                    fetch('/api/agent-heartbeat')
+                    fetch('/api/agent-heartbeat'),
+                    fetch('/api/notes')
                 ]);
 
                 const shopsData = await shopsRes.json();
                 const agentsData = await agentsRes.json();
                 const heartbeatData = await heartbeatRes.json();
+                const notesData = await notesRes.json();
                 const heartbeatList = Array.isArray(heartbeatData.agents)
                     ? heartbeatData.agents
                     : Object.values(heartbeatData.agents || {});
 
                 shops = shopsData.shops || [];
                 heartbeats = heartbeatList;
+                notes = notesData.notes || [];
                 heartbeatMap = heartbeatList.reduce((acc, agent) => {
                     if (agent && agent.shopId) {
                         acc[agent.shopId] = agent;
@@ -868,6 +958,7 @@ ID服务器: 90.195.120.165:21116
                 updateHeartbeatStats(heartbeatData);
                 renderShops(shops);
                 renderHeartbeats(heartbeats);
+                renderNotes(notes);
             } catch (error) {
                 console.error('加载数据失败:', error);
                 showToast('加载数据失败: ' + error.message, 'error');
@@ -1882,6 +1973,161 @@ ID服务器: 90.195.120.165:21116
             }
 
             copyTextToClipboard({ event, text, onSuccess })
+        }
+
+        // 笔记管理功能
+        function renderNotes(notesList) {
+            const container = document.getElementById('notesList');
+            if (!container) return;
+
+            if (!Array.isArray(notesList) || notesList.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无笔记，点击"添加笔记"开始</div>';
+                return;
+            }
+
+            // 按更新时间倒序排列
+            const sortedNotes = [...notesList].sort((a, b) => {
+                const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+                const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+                return bTime - aTime;
+            });
+
+            container.innerHTML = sortedNotes.map((note) => {
+                const safeId = escapeForAttribute(note.id || '');
+                const safeTitle = (note.title || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeContent = (note.content || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const createdAt = formatDateTime(note.createdAt);
+                const updatedAt = formatDateTime(note.updatedAt);
+                const isUpdated = note.updatedAt && note.createdAt && note.updatedAt !== note.createdAt;
+
+                return `
+                    <div class="note-item">
+                        <div class="note-header">
+                            <div style="flex: 1;">
+                                <div class="note-title">${safeTitle}</div>
+                                ${safeContent ? `<div class="note-content">${safeContent}</div>` : ''}
+                                <div class="note-meta">
+                                    创建于: ${createdAt}
+                                    ${isUpdated ? ` · 更新于: ${updatedAt}` : ''}
+                                </div>
+                            </div>
+                            <div class="note-actions">
+                                <button class="btn btn-small" onclick="showEditNoteModal('${safeId}')">编辑</button>
+                                <button class="btn btn-small btn-danger" onclick="deleteNote('${safeId}')">删除</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showAddNoteModal() {
+            document.getElementById('noteModalTitle').textContent = '添加笔记';
+            document.getElementById('noteForm').reset();
+            editingNoteId = null;
+            isEditingNote = false;
+            document.getElementById('noteModal').classList.add('active');
+        }
+
+        function showEditNoteModal(noteId) {
+            const note = notes.find(item => item.id === noteId);
+            if (!note) {
+                showToast('笔记不存在', 'error');
+                return;
+            }
+
+            editingNoteId = noteId;
+            isEditingNote = true;
+            document.getElementById('noteModalTitle').textContent = '编辑笔记';
+            document.getElementById('noteForm').reset();
+            document.getElementById('noteTitle').value = note.title || '';
+            document.getElementById('noteContent').value = note.content || '';
+            document.getElementById('noteModal').classList.add('active');
+        }
+
+        function closeNoteModal() {
+            document.getElementById('noteModal').classList.remove('active');
+            document.getElementById('noteForm').reset();
+            editingNoteId = null;
+            isEditingNote = false;
+            document.getElementById('noteModalTitle').textContent = '添加笔记';
+        }
+
+        document.getElementById('noteForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const title = document.getElementById('noteTitle').value.trim();
+            const content = document.getElementById('noteContent').value.trim();
+
+            if (!title) {
+                showToast('标题不能为空', 'error');
+                return;
+            }
+
+            try {
+                if (isEditingNote && editingNoteId) {
+                    // 更新笔记
+                    const response = await fetch(`/api/notes/${editingNoteId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, content })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('笔记更新成功');
+                        closeNoteModal();
+                        loadData();
+                    } else {
+                        showToast('更新失败: ' + data.error, 'error');
+                    }
+                } else {
+                    // 创建笔记
+                    const response = await fetch('/api/notes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, content })
+                    });
+
+                    const data = await response.json();
+                    if (data.success) {
+                        showToast('笔记添加成功');
+                        closeNoteModal();
+                        loadData();
+                    } else {
+                        showToast('添加失败: ' + data.error, 'error');
+                    }
+                }
+            } catch (error) {
+                showToast('操作失败: ' + error.message, 'error');
+            }
+        });
+
+        async function deleteNote(noteId) {
+            const note = notes.find(item => item.id === noteId);
+            if (!note) {
+                showToast('笔记不存在', 'error');
+                return;
+            }
+
+            if (!confirm(`确定要删除笔记 "${note.title}" 吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/notes/${noteId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('删除成功');
+                    loadData();
+                } else {
+                    showToast('删除失败: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showToast('删除失败: ' + error.message, 'error');
+            }
         }
 
         // 定期刷新数据
