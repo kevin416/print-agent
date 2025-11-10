@@ -29,8 +29,6 @@ win:
   target:
     - nsis
   icon: src/assets/icon.ico
-  # 安装前自动关闭正在运行的应用
-  killAll: true
 linux:
   target:
     - AppImage
