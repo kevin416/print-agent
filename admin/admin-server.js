@@ -1151,9 +1151,17 @@ app.get('/api/client-downloads', async (req, res) => {
       const winZipFiles = winFiles
         .filter(file => file.endsWith('.zip') && (file.includes('win') || file.includes('win64')))
         .map(file => {
+          // Try multiple patterns to extract version
           const version = extractVersion(file, [
+            // "Yepos Agent-0.2.5-win.zip" or "Yepos Agent 0.2.5-win.zip"
             /(?:[\s-])(\d+\.\d+\.\d+)(?:[\s-]win|\.win)/i,
-            /-(\d+\.\d+\.\d+)-/i,
+            // "Yepos Agent-win-x64-0.2.5.zip"
+            /-win[^-]*-(\d+\.\d+\.\d+)\.zip$/i,
+            // "Yepos Agent-0.2.5.zip" (anywhere in filename)
+            /-(\d+\.\d+\.\d+)\.zip$/i,
+            // "Yepos Agent 0.2.5.zip"
+            /\s(\d+\.\d+\.\d+)\.zip$/i,
+            // Last resort: any version number before .zip
             /(\d+\.\d+\.\d+)\.zip$/i
           ])
           return { file, version }
@@ -1161,10 +1169,14 @@ app.get('/api/client-downloads', async (req, res) => {
         .filter(item => item.version) // Only keep files with valid version
         .sort((a, b) => compareVersions(b.version, a.version)) // Sort descending (highest version first)
       
+      // Debug: log all found files and versions
+      console.log('[client-downloads] Windows ZIP files found:', winZipFiles.map(f => `${f.file} -> v${f.version}`))
+      
       if (winZipFiles.length > 0) {
         const latest = winZipFiles[0]
         downloads.win.zip = `/updates/local-usb-agent/win/${latest.file}`
         downloads.win.version = latest.version
+        console.log('[client-downloads] Selected Windows ZIP:', latest.file, 'version:', latest.version)
       }
     }
 
@@ -1179,6 +1191,7 @@ app.get('/api/client-downloads', async (req, res) => {
         .map(file => {
           const version = extractVersion(file, [
             /-(\d+\.\d+\.\d+)\.dmg$/i,
+            /\s(\d+\.\d+\.\d+)\.dmg$/i,
             /(\d+\.\d+\.\d+)\.dmg$/i
           ])
           return { file, version }
@@ -1186,12 +1199,15 @@ app.get('/api/client-downloads', async (req, res) => {
         .filter(item => item.version)
         .sort((a, b) => compareVersions(b.version, a.version))
       
+      console.log('[client-downloads] macOS DMG files found:', macDmgFiles.map(f => `${f.file} -> v${f.version}`))
+      
       if (macDmgFiles.length > 0) {
         const latest = macDmgFiles[0]
         downloads.mac.dmg = `/updates/local-usb-agent/mac/${latest.file}`
         if (!downloads.mac.version) {
           downloads.mac.version = latest.version
         }
+        console.log('[client-downloads] Selected macOS DMG:', latest.file, 'version:', latest.version)
       }
       
       // Process ZIP files
@@ -1200,6 +1216,8 @@ app.get('/api/client-downloads', async (req, res) => {
         .map(file => {
           const version = extractVersion(file, [
             /-(\d+\.\d+\.\d+)-/i,
+            /\s(\d+\.\d+\.\d+)\.zip$/i,
+            /-(\d+\.\d+\.\d+)\.zip$/i,
             /(\d+\.\d+\.\d+)\.zip$/i
           ])
           return { file, version }
@@ -1207,12 +1225,15 @@ app.get('/api/client-downloads', async (req, res) => {
         .filter(item => item.version)
         .sort((a, b) => compareVersions(b.version, a.version))
       
+      console.log('[client-downloads] macOS ZIP files found:', macZipFiles.map(f => `${f.file} -> v${f.version}`))
+      
       if (macZipFiles.length > 0) {
         const latest = macZipFiles[0]
         downloads.mac.zip = `/updates/local-usb-agent/mac/${latest.file}`
         if (!downloads.mac.version) {
           downloads.mac.version = latest.version
         }
+        console.log('[client-downloads] Selected macOS ZIP:', latest.file, 'version:', latest.version)
       }
     }
 

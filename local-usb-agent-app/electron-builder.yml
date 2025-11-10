@@ -28,6 +28,7 @@ mac:
 win:
   target:
     - nsis
+    - zip
   icon: src/assets/icon.ico
 linux:
   target:
