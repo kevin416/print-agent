@@ -1103,6 +1103,35 @@ app.get('/api/deploy-script', async (req, res) => {
 })
 
 /**
+ * Compare two version strings (e.g., "1.2.3" vs "1.2.4")
+ * Returns: -1 if a < b, 0 if a === b, 1 if a > b
+ */
+function compareVersions(a, b) {
+  const aParts = a.split('.').map(Number)
+  const bParts = b.split('.').map(Number)
+  const maxLength = Math.max(aParts.length, bParts.length)
+  
+  for (let i = 0; i < maxLength; i++) {
+    const aPart = aParts[i] || 0
+    const bPart = bParts[i] || 0
+    if (aPart < bPart) return -1
+    if (aPart > bPart) return 1
+  }
+  return 0
+}
+
+/**
+ * Extract version from filename
+ */
+function extractVersion(file, patterns) {
+  for (const pattern of patterns) {
+    const match = file.match(pattern)
+    if (match) return match[1]
+  }
+  return null
+}
+
+/**
  * Get latest client download links
  */
 app.get('/api/client-downloads', async (req, res) => {
@@ -1118,34 +1147,24 @@ app.get('/api/client-downloads', async (req, res) => {
     const winDir = path.join(updatesPath, 'win')
     if (await fs.pathExists(winDir)) {
       const winFiles = await fs.readdir(winDir)
-      // Sort files by modification time (newest first)
-      const winFilesWithStats = await Promise.all(
-        winFiles.map(async (file) => {
-          const filePath = path.join(winDir, file)
-          try {
-            const stats = await fs.stat(filePath)
-            return { file, mtime: stats.mtime }
-          } catch {
-            return { file, mtime: new Date(0) }
-          }
+      // Extract version from each ZIP file and sort by version (highest first)
+      const winZipFiles = winFiles
+        .filter(file => file.endsWith('.zip') && (file.includes('win') || file.includes('win64')))
+        .map(file => {
+          const version = extractVersion(file, [
+            /(?:[\s-])(\d+\.\d+\.\d+)(?:[\s-]win|\.win)/i,
+            /-(\d+\.\d+\.\d+)-/i,
+            /(\d+\.\d+\.\d+)\.zip$/i
+          ])
+          return { file, version }
         })
-      )
-      winFilesWithStats.sort((a, b) => b.mtime - a.mtime)
+        .filter(item => item.version) // Only keep files with valid version
+        .sort((a, b) => compareVersions(b.version, a.version)) // Sort descending (highest version first)
       
-      for (const { file } of winFilesWithStats) {
-        // 只处理 ZIP 文件（便携版），不处理 EXE 文件（安装版）
-        if (file.endsWith('.zip') && (file.includes('win') || file.includes('win64'))) {
-          if (!downloads.win.zip) {
-            downloads.win.zip = `/updates/local-usb-agent/win/${file}`
-            if (!downloads.win.version) {
-              // Support both space and dash separators
-              const versionMatch = file.match(/(?:[\s-])(\d+\.\d+\.\d+)(?:[\s-]win|\.win)/i)
-              if (versionMatch) {
-                downloads.win.version = versionMatch[1]
-              }
-            }
-          }
-        }
+      if (winZipFiles.length > 0) {
+        const latest = winZipFiles[0]
+        downloads.win.zip = `/updates/local-usb-agent/win/${latest.file}`
+        downloads.win.version = latest.version
       }
     }
 
@@ -1153,40 +1172,46 @@ app.get('/api/client-downloads', async (req, res) => {
     const macDir = path.join(updatesPath, 'mac')
     if (await fs.pathExists(macDir)) {
       const macFiles = await fs.readdir(macDir)
-      // Sort files by modification time (newest first)
-      const macFilesWithStats = await Promise.all(
-        macFiles.map(async (file) => {
-          const filePath = path.join(macDir, file)
-          try {
-            const stats = await fs.stat(filePath)
-            return { file, mtime: stats.mtime }
-          } catch {
-            return { file, mtime: new Date(0) }
-          }
-        })
-      )
-      macFilesWithStats.sort((a, b) => b.mtime - a.mtime)
       
-      for (const { file } of macFilesWithStats) {
-        if (file.endsWith('.dmg')) {
-          if (!downloads.mac.dmg) {
-            downloads.mac.dmg = `/updates/local-usb-agent/mac/${file}`
-            // Extract version from filename (e.g., "Yepos Agent-0.2.2.dmg")
-            const versionMatch = file.match(/-(\d+\.\d+\.\d+)\.dmg$/i)
-            if (versionMatch && !downloads.mac.version) {
-              downloads.mac.version = versionMatch[1]
-            }
-          }
-        } else if (file.endsWith('.zip') && (file.includes('mac') || file.includes('arm64') || file.includes('x64'))) {
-          if (!downloads.mac.zip) {
-            downloads.mac.zip = `/updates/local-usb-agent/mac/${file}`
-            if (!downloads.mac.version) {
-              const versionMatch = file.match(/-(\d+\.\d+\.\d+)-/i)
-              if (versionMatch) {
-                downloads.mac.version = versionMatch[1]
-              }
-            }
-          }
+      // Process DMG files
+      const macDmgFiles = macFiles
+        .filter(file => file.endsWith('.dmg'))
+        .map(file => {
+          const version = extractVersion(file, [
+            /-(\d+\.\d+\.\d+)\.dmg$/i,
+            /(\d+\.\d+\.\d+)\.dmg$/i
+          ])
+          return { file, version }
+        })
+        .filter(item => item.version)
+        .sort((a, b) => compareVersions(b.version, a.version))
+      
+      if (macDmgFiles.length > 0) {
+        const latest = macDmgFiles[0]
+        downloads.mac.dmg = `/updates/local-usb-agent/mac/${latest.file}`
+        if (!downloads.mac.version) {
+          downloads.mac.version = latest.version
+        }
+      }
+      
+      // Process ZIP files
+      const macZipFiles = macFiles
+        .filter(file => file.endsWith('.zip') && (file.includes('mac') || file.includes('arm64') || file.includes('x64')))
+        .map(file => {
+          const version = extractVersion(file, [
+            /-(\d+\.\d+\.\d+)-/i,
+            /(\d+\.\d+\.\d+)\.zip$/i
+          ])
+          return { file, version }
+        })
+        .filter(item => item.version)
+        .sort((a, b) => compareVersions(b.version, a.version))
+      
+      if (macZipFiles.length > 0) {
+        const latest = macZipFiles[0]
+        downloads.mac.zip = `/updates/local-usb-agent/mac/${latest.file}`
+        if (!downloads.mac.version) {
+          downloads.mac.version = latest.version
         }
       }
     }
@@ -1195,21 +1220,46 @@ app.get('/api/client-downloads', async (req, res) => {
     const linuxDir = path.join(updatesPath, 'linux')
     if (await fs.pathExists(linuxDir)) {
       const linuxFiles = await fs.readdir(linuxDir)
-      for (const file of linuxFiles) {
-        if (file.endsWith('.AppImage')) {
-          downloads.linux.appimage = `/updates/local-usb-agent/linux/${file}`
-          const versionMatch = file.match(/-(\d+\.\d+\.\d+)-/)
-          if (versionMatch && !downloads.linux.version) {
-            downloads.linux.version = versionMatch[1]
-          }
-        } else if (file.endsWith('.deb')) {
-          downloads.linux.deb = `/updates/local-usb-agent/linux/${file}`
-          if (!downloads.linux.version) {
-            const versionMatch = file.match(/-(\d+\.\d+\.\d+)-/)
-            if (versionMatch) {
-              downloads.linux.version = versionMatch[1]
-            }
-          }
+      
+      // Process AppImage files
+      const appImageFiles = linuxFiles
+        .filter(file => file.endsWith('.AppImage'))
+        .map(file => {
+          const version = extractVersion(file, [
+            /-(\d+\.\d+\.\d+)-/i,
+            /(\d+\.\d+\.\d+)\.AppImage$/i
+          ])
+          return { file, version }
+        })
+        .filter(item => item.version)
+        .sort((a, b) => compareVersions(b.version, a.version))
+      
+      if (appImageFiles.length > 0) {
+        const latest = appImageFiles[0]
+        downloads.linux.appimage = `/updates/local-usb-agent/linux/${latest.file}`
+        if (!downloads.linux.version) {
+          downloads.linux.version = latest.version
+        }
+      }
+      
+      // Process DEB files
+      const debFiles = linuxFiles
+        .filter(file => file.endsWith('.deb'))
+        .map(file => {
+          const version = extractVersion(file, [
+            /-(\d+\.\d+\.\d+)-/i,
+            /(\d+\.\d+\.\d+)\.deb$/i
+          ])
+          return { file, version }
+        })
+        .filter(item => item.version)
+        .sort((a, b) => compareVersions(b.version, a.version))
+      
+      if (debFiles.length > 0) {
+        const latest = debFiles[0]
+        downloads.linux.deb = `/updates/local-usb-agent/linux/${latest.file}`
+        if (!downloads.linux.version) {
+          downloads.linux.version = latest.version
         }
       }
     }
