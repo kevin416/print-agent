@@ -57,7 +57,8 @@ nsis:
   installerIcon: src/assets/icon.ico
   uninstallerIcon: src/assets/icon.ico
   # 自定义安装脚本：在安装前关闭应用
-  include: build/installer.nsh
+  # 注意：路径相对于项目根目录
+  include: installer.nsh
 publish:
   - provider: generic
     url: https://pa.easyify.uk/updates/local-usb-agent

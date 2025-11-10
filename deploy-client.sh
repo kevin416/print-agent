@@ -250,6 +250,14 @@ else
     npm run build
 fi
 
+# 检查打包是否成功
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ 打包失败！"
+    echo "   请检查上面的错误信息"
+    exit 1
+fi
+
 echo ""
 echo "✅ 打包完成！"
 echo ""
