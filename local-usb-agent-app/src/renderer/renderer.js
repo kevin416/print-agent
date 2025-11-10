@@ -4,6 +4,8 @@ const shopIdInput = document.getElementById('shop-id');
 const serverPortInput = document.getElementById('server-port');
 const autostartToggle = document.getElementById('autostart-toggle');
 const allowSelfSignedToggle = document.getElementById('allow-self-signed');
+const backgroundModeToggle = document.getElementById('background-mode-toggle');
+const autoTestOnAttachToggle = document.getElementById('auto-test-on-attach');
 const deviceTable = document.getElementById('device-table');
 const logViewer = document.getElementById('log-viewer');
 const logPathLabel = document.getElementById('log-path');
@@ -31,8 +33,10 @@ const telemetryLogPreview = document.getElementById('telemetry-log-preview');
 const telemetryLogContent = document.getElementById('telemetry-log-content');
 const historySummary = document.getElementById('history-summary');
 const historyTableBody = document.getElementById('history-table-body');
+const hotplugEventsContainer = document.getElementById('hotplug-events');
 
 const DEFAULT_UPDATE_FEED_URL = 'https://pa.easyify.uk/updates/local-usb-agent';
+const HOTPLUG_HIGHLIGHT_MS = 15000;
 
 const saveButton = document.getElementById('btn-save-config');
 const refreshButton = document.getElementById('btn-refresh');
@@ -58,6 +62,8 @@ let currentTelemetryState = {};
 let printerMappings = {};
 let printHistory = [];
 let currentTcpPrinters = [];
+const hotplugEvents = [];
+const hotplugMarkers = new Map();
 const onboardingState = {
   data: null,
   visible: false,
@@ -245,6 +251,16 @@ function handleOnboardingData(data) {
 
 const printerRoles = ['Kitchen', 'FrontDesk', 'Bar', 'Receipt', 'Label', 'Custom'];
 
+function escapeHtml(value) {
+  if (value === undefined || value === null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildUsbKey(vendorId, productId) {
   return `usb:${Number(vendorId)}:${Number(productId)}`;
 }
@@ -269,12 +285,14 @@ async function refreshPrinterMappings() {
   printHistory = history || [];
   renderDevices();
   renderPrintHistory();
+  renderHotplugEvents();
   updateOnboardingUI({ rerender: true });
 }
 
 async function refreshStatus() {
   const data = await window.agent.getStatus();
   currentConfig = data.config || {};
+  currentConfig.preferences = currentConfig.preferences || {};
   currentDevices = data.devices || [];
   currentTcpPrinters = data.tcpPrinters || [];
   currentUpdateState = data.update || currentUpdateState;
@@ -302,6 +320,12 @@ function renderStatus({ config, devices, server, autoLaunch, update, telemetry }
   serverPortInput.value = config.server?.port || 40713;
   autostartToggle.checked = Boolean(autoLaunch);
   allowSelfSignedToggle.checked = Boolean(config.preferences?.allowSelfSigned);
+  if (backgroundModeToggle) {
+    backgroundModeToggle.checked = config.preferences?.runInBackground !== false;
+  }
+  if (autoTestOnAttachToggle) {
+    autoTestOnAttachToggle.checked = Boolean(config.preferences?.autoTestOnAttach);
+  }
   renderUpdateConfig(config.updates || {}, update || currentUpdateState);
   renderTelemetryConfig(config.telemetry || {}, telemetry || currentTelemetryState);
   updateOnboardingUI({ rerender: true });
@@ -459,13 +483,45 @@ function renderDevices() {
     const tr = document.createElement('tr');
     const key = getDeviceKey(device);
     const mapping = getMappingForDevice(device);
+    const marker = hotplugMarkers.get(key) || device.change || null;
     const aliasValue =
       mapping.alias ||
       (currentConfig.printers || []).find((p) => p.vendorId === device.vendorId && p.productId === device.productId)?.alias ||
       '';
 
+    tr.dataset.deviceKey = key;
+    if (marker?.type === 'attach') {
+      tr.classList.add('row-hotplug-attach');
+    }
+
+    const subtitleParts = [];
+    if (device.manufacturerName) {
+      subtitleParts.push(device.manufacturerName);
+    }
+    if (device.portPath) {
+      subtitleParts.push(`端口 ${device.portPath}`);
+    }
+    if (device.serialNumber) {
+      subtitleParts.push(`SN ${device.serialNumber}`);
+    }
+    const subtitleHtml = subtitleParts.length
+      ? `<div class="device-secondary">${escapeHtml(subtitleParts.join(' · '))}</div>`
+      : '';
+    const printerWarning =
+      device.isPrinter === false
+        ? '<div class="device-warning">⚠️ 可能不是打印机</div>'
+        : '';
+    const deviceLabel =
+      device.productName ||
+      device.deviceName ||
+      `USB 设备 (VID 0x${device.vendorId?.toString(16) ?? '--'} · PID 0x${device.productId?.toString(16) ?? '--'})`;
+
     tr.innerHTML = `
-      <td>${device.deviceName}</td>
+      <td class="device-cell">
+        <div class="device-primary">${escapeHtml(deviceLabel)}</div>
+        ${subtitleHtml}
+        ${printerWarning}
+      </td>
       <td>0x${device.vendorId?.toString(16) ?? '--'}</td>
       <td>0x${device.productId?.toString(16) ?? '--'}</td>
       <td class="alias-cell"></td>
@@ -534,25 +590,32 @@ function renderDevices() {
     actionsCell.appendChild(testButton);
 
     const statusCell = tr.querySelector('.status-cell');
-    function renderStatusCell(map) {
+    function renderStatusCell(map, eventMarker) {
+      const eventHtml = eventMarker
+        ? `<div class="status-hotplug status-hotplug-${eventMarker.type}">${
+            eventMarker.type === 'attach' ? '刚刚接入' : '刚刚移除'
+          }</div>`
+        : '';
       const lastTest = map.lastTest;
       if (!lastTest) {
-        statusCell.innerHTML = '<span class="muted">未测试</span>';
+        statusCell.innerHTML = `${eventHtml}<span class="muted">未测试</span>`;
         return;
       }
       const statusClass = lastTest.status === 'success' ? 'history-status-success' : 'history-status-error';
       statusCell.innerHTML = `
+        ${eventHtml}
         <div class="${statusClass}">${lastTest.status === 'success' ? '成功' : '失败'}</div>
         <div class="muted">${formatRelativeTime(lastTest.timestamp)}</div>
         <div class="muted" style="max-width:180px;">${lastTest.message || ''}</div>
       `;
     }
-    renderStatusCell(mapping);
+    renderStatusCell(mapping, marker);
 
     testButton.addEventListener('click', async () => {
       testButton.disabled = true;
       testButton.textContent = '测试中...';
-      const result = await window.agent.testUsbDevice({
+      const result = await window.agent.testPrinter({
+        connectionType: 'usb',
         vendorId: device.vendorId,
         productId: device.productId,
         alias: aliasInput.value,
@@ -579,6 +642,69 @@ function renderDevices() {
     deviceTable.appendChild(tr);
   });
   updateOnboardingUI({ rerender: true });
+}
+
+function renderHotplugEvents() {
+  if (!hotplugEventsContainer) return;
+  if (!hotplugEvents.length) {
+    hotplugEventsContainer.innerHTML = '<div class="muted">暂无最新事件</div>';
+    return;
+  }
+  const items = hotplugEvents.slice(0, 5).map((entry) => {
+    const device = entry.device || {};
+    const typeLabel =
+      entry.type === 'attach' ? '设备接入' : entry.type === 'detach' ? '设备移除' : '事件';
+    const productLabel =
+      device.productName ||
+      device.deviceName ||
+      `USB 设备 (VID 0x${Number(device.vendorId || 0).toString(16)} · PID 0x${Number(device.productId || 0).toString(16)})`;
+    const metaParts = [];
+    if (device.manufacturerName) {
+      metaParts.push(device.manufacturerName);
+    }
+    if (device.vendorId != null) {
+      metaParts.push(`VID 0x${Number(device.vendorId).toString(16)}`);
+    }
+    if (device.productId != null) {
+      metaParts.push(`PID 0x${Number(device.productId).toString(16)}`);
+    }
+    if (device.portPath) {
+      metaParts.push(`端口 ${device.portPath}`);
+    }
+    const meta = metaParts.filter(Boolean).join(' · ');
+    let autoTestHtml = '';
+    if (entry.autoTest) {
+      if (entry.autoTest.status === 'running') {
+        autoTestHtml = '<div class="hotplug-meta">自动测试中...</div>';
+      } else {
+        const cls = entry.autoTest.status === 'success' ? 'history-status-success' : 'history-status-error';
+        const label = entry.autoTest.status === 'success' ? '自动测试成功' : `自动测试失败：${escapeHtml(entry.autoTest.message || '')}`;
+        autoTestHtml = `<div class="hotplug-meta"><span class="${cls}">${label}</span></div>`;
+      }
+    }
+    const actions =
+      entry.type === 'attach' && device.vendorId != null && device.productId != null
+        ? `<div class="hotplug-actions">
+             <button class="secondary hotplug-test-btn" data-vendor="${Number(device.vendorId)}" data-product="${Number(
+            device.productId
+          )}">测试打印</button>
+           </div>`
+        : '';
+
+    return `
+      <div class="hotplug-item ${entry.type}">
+        <div class="hotplug-header">
+          <span>${typeLabel}</span>
+          <span class="muted">${formatTimestamp(entry.timestamp)}</span>
+        </div>
+        <div class="device-primary" style="margin-top:6px;">${escapeHtml(productLabel)}</div>
+        <div class="hotplug-meta">${escapeHtml(meta)}</div>
+        ${autoTestHtml}
+        ${actions}
+      </div>
+    `;
+  });
+  hotplugEventsContainer.innerHTML = items.join('');
 }
 
 function renderPrintHistory() {
@@ -621,7 +747,9 @@ async function saveConfig() {
     server: { port: Number(serverPortInput.value) || 40713 },
     preferences: {
       autoLaunch: autostartToggle.checked,
-      allowSelfSigned: allowSelfSignedToggle.checked
+      allowSelfSigned: allowSelfSignedToggle.checked,
+      runInBackground: backgroundModeToggle ? backgroundModeToggle.checked : true,
+      autoTestOnAttach: autoTestOnAttachToggle ? autoTestOnAttachToggle.checked : false
     },
     updates: {
       feedUrl: updatesFeedUrlInput.value.trim() || DEFAULT_UPDATE_FEED_URL,
@@ -638,7 +766,123 @@ async function saveConfig() {
   };
   await window.agent.saveConfig(payload);
   await window.agent.setAutostart(payload.preferences.autoLaunch);
+  currentConfig.preferences = {
+    ...(currentConfig.preferences || {}),
+    ...payload.preferences
+  };
   await refreshStatus();
+}
+
+function markHotplug(key, marker) {
+  if (!key) return;
+  hotplugMarkers.set(key, marker);
+  setTimeout(() => {
+    const stored = hotplugMarkers.get(key);
+    if (stored && stored.timestamp === marker.timestamp) {
+      hotplugMarkers.delete(key);
+      renderDevices();
+    }
+  }, HOTPLUG_HIGHLIGHT_MS);
+}
+
+async function autoTestNewDevice(entry, device) {
+  if (!device) return;
+  const vendorId = Number(device.vendorId);
+  const productId = Number(device.productId);
+  if (!Number.isFinite(vendorId) || !Number.isFinite(productId)) {
+    return;
+  }
+  const key = buildUsbKey(vendorId, productId);
+  const mapping = printerMappings[key];
+  if (!mapping) {
+    return;
+  }
+  entry.autoTest = { status: 'running' };
+  renderHotplugEvents();
+  try {
+    const result = await window.agent.testPrinter({
+      connectionType: 'usb',
+      vendorId,
+      productId,
+      alias: mapping.alias || device.productName || device.deviceName || '',
+      role: mapping.role || 'Kitchen'
+    });
+    entry.autoTest = {
+      status: result?.ok ? 'success' : 'error',
+      message: result?.ok ? '打印成功' : result?.error || '打印失败'
+    };
+  } catch (error) {
+    entry.autoTest = {
+      status: 'error',
+      message: error?.message || '打印失败'
+    };
+  }
+  renderHotplugEvents();
+}
+
+async function handleHotplugEvent(event) {
+  if (!event) return;
+  const timestampMs =
+    typeof event.timestamp === 'number'
+      ? event.timestamp
+      : event.timestamp
+        ? Date.parse(event.timestamp)
+        : Date.now();
+  const timestampIso = new Date(timestampMs).toISOString();
+  const entry = {
+    ...event,
+    timestamp: timestampIso,
+    device: event.device ? { ...event.device } : null
+  };
+  hotplugEvents.unshift(entry);
+  if (hotplugEvents.length > 5) {
+    hotplugEvents.length = 5;
+  }
+  renderHotplugEvents();
+
+  if (event.device?.vendorId != null && event.device?.productId != null) {
+    const key = buildUsbKey(event.device.vendorId, event.device.productId);
+    markHotplug(key, { type: event.type, timestamp: timestampMs });
+  }
+
+  if (
+    event.type === 'attach' &&
+    event.device?.vendorId != null &&
+    event.device?.productId != null &&
+    currentConfig?.preferences?.autoTestOnAttach
+  ) {
+    await autoTestNewDevice(entry, event.device);
+  }
+}
+
+async function handleHotplugAction(event) {
+  const target = event.target.closest('.hotplug-test-btn');
+  if (!target) return;
+  const vendorId = Number(target.dataset.vendorId);
+  const productId = Number(target.dataset.productId);
+  if (!Number.isFinite(vendorId) || !Number.isFinite(productId)) return;
+  const original = target.textContent;
+  target.disabled = true;
+  target.textContent = '测试中...';
+  const key = buildUsbKey(vendorId, productId);
+  const mapping = printerMappings[key] || {};
+  try {
+    const result = await window.agent.testPrinter({
+      connectionType: 'usb',
+      vendorId,
+      productId,
+      alias: mapping.alias || '',
+      role: mapping.role || 'Kitchen'
+    });
+    if (!result?.ok) {
+      alert(result?.error || '测试打印失败');
+    }
+  } catch (error) {
+    alert(error?.message || '测试打印失败');
+  } finally {
+    target.disabled = false;
+    target.textContent = original;
+  }
 }
 
 async function refreshDevices() {
@@ -673,6 +917,21 @@ refreshButton.addEventListener('click', refreshStatus);
 refreshDevicesButton.addEventListener('click', refreshDevices);
 refreshLogsButton.addEventListener('click', refreshLogs);
 window.agent.onDevicesUpdated(() => refreshDevices());
+if (backgroundModeToggle) {
+  backgroundModeToggle.addEventListener('change', () => {
+    currentConfig.preferences = currentConfig.preferences || {};
+    currentConfig.preferences.runInBackground = backgroundModeToggle.checked;
+  });
+}
+if (autoTestOnAttachToggle) {
+  autoTestOnAttachToggle.addEventListener('change', () => {
+    currentConfig.preferences = currentConfig.preferences || {};
+    currentConfig.preferences.autoTestOnAttach = autoTestOnAttachToggle.checked;
+  });
+}
+if (hotplugEventsContainer) {
+  hotplugEventsContainer.addEventListener('click', handleHotplugAction);
+}
 checkUpdateButton.addEventListener('click', async () => {
   updateStatusChip.textContent = '正在检查';
   updateStatusChip.classList.remove('status-offline');
@@ -710,12 +969,16 @@ clearHistoryButton.addEventListener('click', clearHistory);
 window.agent.onPrinterMappingsUpdated((payload) => {
   printerMappings = payload?.mappings || printerMappings;
   renderDevices();
+  renderHotplugEvents();
   updateOnboardingUI({ rerender: true });
 });
 window.agent.onPrintHistoryUpdated((payload) => {
   printHistory = payload?.history || printHistory;
   renderPrintHistory();
   updateOnboardingUI({ rerender: true });
+});
+window.agent.onUsbHotplug((payload) => {
+  handleHotplugEvent(payload);
 });
 window.agent.onOnboardingUpdated((payload) => {
   handleOnboardingData(payload);
@@ -751,3 +1014,4 @@ refreshStatus().then(() => {
   renderPrintHistory();
   refreshLogs();
 });
+renderHotplugEvents();

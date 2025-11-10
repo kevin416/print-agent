@@ -24,6 +24,14 @@ const schema = {
       allowSelfSigned: {
         type: 'boolean',
         default: false
+      },
+      runInBackground: {
+        type: 'boolean',
+        default: true
+      },
+      autoTestOnAttach: {
+        type: 'boolean',
+        default: false
       }
     }
   },
@@ -242,6 +250,17 @@ const store = new Store({ schema, watch: true, migrations: {
       next[newKey] = entry;
     });
     store.set('printerMappings', next);
+  }
+  ,
+  '0.4.3': (store) => {
+    const preferences = store.get('preferences') || {};
+    if (preferences.runInBackground === undefined) {
+      preferences.runInBackground = true;
+    }
+    if (preferences.autoTestOnAttach === undefined) {
+      preferences.autoTestOnAttach = false;
+    }
+    store.set('preferences', preferences);
   }
 }});
 

@@ -24,5 +24,6 @@ contextBridge.exposeInMainWorld('agent', {
   onPrintHistoryUpdated: (listener) => ipcRenderer.on('agent:print-history-updated', (_event, payload) => listener(payload)),
   getOnboarding: () => ipcRenderer.invoke('agent:get-onboarding'),
   updateOnboarding: (payload) => ipcRenderer.invoke('agent:update-onboarding', payload),
-  onOnboardingUpdated: (listener) => ipcRenderer.on('agent:onboarding-updated', (_event, payload) => listener(payload))
+  onOnboardingUpdated: (listener) => ipcRenderer.on('agent:onboarding-updated', (_event, payload) => listener(payload)),
+  onUsbHotplug: (listener) => ipcRenderer.on('agent:usb-hotplug', (_event, payload) => listener(payload))
 });

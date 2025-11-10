@@ -85,10 +85,17 @@ function createWindow() {
   });
 
   mainWindow.on('close', (event) => {
-    if (!quitting) {
+    if (quitting) {
+      return;
+    }
+    const preferences = configStore.get('preferences') || {};
+    const runInBackground = preferences.runInBackground !== false;
+    if (runInBackground) {
       event.preventDefault();
       mainWindow?.hide();
+      return;
     }
+    quitting = true;
   });
 }
 
@@ -394,6 +401,15 @@ async function bootstrap() {
     if (remoteClient) {
       remoteClient.stop();
       remoteClient.start();
+    }
+  });
+  usbManager.onHotplug((event) => {
+    try {
+      mainWindow?.webContents?.send('agent:usb-hotplug', event);
+      mainWindow?.webContents?.send('agent:devices-updated');
+      remoteClient?.forceHeartbeat?.();
+    } catch (error) {
+      logger.warn('Failed to forward USB hotplug event', error);
     }
   });
   emitPrinterMappings();

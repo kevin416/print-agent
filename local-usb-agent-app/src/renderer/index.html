@@ -38,6 +38,32 @@
       align-items: center;
       gap: 8px;
     }
+    .device-primary {
+      font-weight: 600;
+      font-size: 14px;
+      color: #1f2937;
+    }
+    .device-secondary {
+      margin-top: 2px;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .device-warning {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #92400e;
+      background: #fef3c7;
+      display: inline-flex;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+    .tag-warning {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+    }
     .status-chip {
       padding: 4px 10px;
       border-radius: 999px;
@@ -149,6 +175,64 @@
     .history-status-error {
       color: #b91c1c;
       font-weight: 600;
+    }
+    .status-hotplug {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .status-hotplug-attach {
+      color: #047857;
+    }
+    .status-hotplug-detach {
+      color: #b91c1c;
+    }
+    .row-hotplug-attach {
+      animation: hotplugPulse 1.5s ease-in-out 2;
+      background: #ecfdf5;
+    }
+    @keyframes hotplugPulse {
+      0% { background: #ecfdf5; }
+      50% { background: #d1fae5; }
+      100% { background: #ecfdf5; }
+    }
+    #hotplug-events {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .hotplug-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      background: #f8fafc;
+    }
+    .hotplug-item.attach {
+      border-color: #34d399;
+      background: #ecfdf5;
+    }
+    .hotplug-item.detach {
+      border-color: #f87171;
+      background: #fef2f2;
+    }
+    .hotplug-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+    .hotplug-meta {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .hotplug-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
     .progress-track {
       height: 6px;
@@ -278,7 +362,23 @@
         <input type="checkbox" id="allow-self-signed">
         允许自签名证书 (调试)
       </label>
+      <label style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="background-mode-toggle" checked>
+        关闭窗口后继续后台运行
+      </label>
+      <label style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="auto-test-on-attach">
+        新接入打印机自动测试
+      </label>
     </div>
+  </section>
+
+  <section class="card" id="hotplug-card">
+    <div class="flex-between">
+      <h2>设备热插拔</h2>
+      <span class="muted">最近检测到的 5 条事件</span>
+    </div>
+    <div id="hotplug-events" class="muted">暂无最新事件</div>
   </section>
 
   <section class="card" id="updater-card">
