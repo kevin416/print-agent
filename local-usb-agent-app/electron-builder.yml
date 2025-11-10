@@ -12,19 +12,27 @@ extraMetadata:
 # 图标配置：electron-builder 会自动从 SVG/PNG 生成各平台所需格式
 # macOS 需要 .icns，Windows 需要 .ico，Linux 需要 .png
 # 如果提供 SVG，electron-builder 会自动转换
-icon: src/assets/icon-512.svg
+# 注意：Windows 上 SVG 可能无法直接处理，macOS 和 Linux 可以使用 SVG
 mac:
   category: public.app-category.utilities
   target:
     - dmg
     - zip
+  icon: src/assets/icon-512.svg
   # macOS 也可以单独指定 .icns 文件
   # icon: src/assets/icon.icns
 win:
   target:
     - nsis
-  # Windows 也可以单独指定 .ico 文件
-  # icon: src/assets/icon.ico
+  icon: src/assets/icon.ico
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  icon: src/assets/icon-512.svg
+  # Linux 也可以单独指定 .png 文件
+  # icon: src/assets/icon.png
 nsis:
   # 安装后创建启动项快捷方式
   createDesktopShortcut: always
@@ -37,13 +45,6 @@ nsis:
   runAfterFinish: false
   # 卸载时清理启动项
   deleteAppDataOnUninstall: false
-linux:
-  target:
-    - AppImage
-    - deb
-  category: Utility
-  # Linux 也可以单独指定 .png 文件
-  # icon: src/assets/icon.png
 publish:
   - provider: generic
     url: https://pa.easyify.uk/updates/local-usb-agent

@@ -2,6 +2,15 @@
   "name": "local-usb-agent-app",
   "version": "0.2.1",
   "description": "Yepos Agent - Local printing agent with USB and TCP support",
+  "author": "Kevin Chen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kevin416/print-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kevin416/print-agent/issues"
+  },
   "main": "src/main/main.js",
   "scripts": {
     "dev": "cross-env NODE_ENV=development electron .",
