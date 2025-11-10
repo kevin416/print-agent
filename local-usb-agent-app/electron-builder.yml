@@ -4,6 +4,9 @@ files:
   - "dist/**"
   - "src/**/*"
   - "package.json"
+  # 确保图标文件被包含
+  - "src/assets/icon.ico"
+  - "src/assets/icon-512.svg"
 asar: false
 directories:
   output: build
@@ -45,6 +48,12 @@ nsis:
   runAfterFinish: false
   # 卸载时清理启动项
   deleteAppDataOnUninstall: false
+  # 安装程序显示名称（使用 productName）
+  oneClick: false
+  perMachine: false
+  # 安装程序和卸载程序图标
+  installerIcon: src/assets/icon.ico
+  uninstallerIcon: src/assets/icon.ico
 publish:
   - provider: generic
     url: https://pa.easyify.uk/updates/local-usb-agent
