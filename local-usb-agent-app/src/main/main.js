@@ -73,7 +73,7 @@ function buildTestPayload({ connectionType = 'usb', vendorId, productId, alias, 
   const lines = [
     ESC + '@',
     ESC + '!' + '\x30',
-    'LOCAL USB AGENT\n',
+    'YEPOS AGENT\n',
     ESC + '!' + '\x00',
     '测试打印任务\n',
     '------------------------------\n',
@@ -131,7 +131,7 @@ function ensureTray() {
   if (tray) return;
   const icon = loadIcon({ template: process.platform === 'darwin' });
   tray = new Tray(icon);
-  tray.setToolTip('Local USB Print Agent');
+  tray.setToolTip('Yepos Agent');
   tray.on('click', () => {
     if (!mainWindow) return;
     mainWindow.show();
@@ -397,6 +397,21 @@ async function bootstrap() {
   global.sharedModules = { printerMappings, printHistory, tcpPrinterManager };
   await usbManager.refreshDevices();
 
+  // Windows 首次启动时自动设置自启动
+  if (process.platform === 'win32') {
+    const preferences = configStore.get('preferences') || {};
+    const autoLaunch = preferences.autoLaunch;
+    const hasSetAutoLaunch = configStore.get('_hasSetAutoLaunch');
+    
+    // 如果用户没有手动设置过，且当前未启用自启动，则自动启用
+    if (autoLaunch === undefined && !hasSetAutoLaunch) {
+      setAutoLaunchEnabled(true);
+      configStore.set('preferences.autoLaunch', true);
+      configStore.set('_hasSetAutoLaunch', true);
+      logger.info('Windows auto-launch enabled on first run');
+    }
+  }
+
   serverHandle = await startServer({ configStore, usbManager, tcpPrinterManager, printerMappings, logger });
 
   createWindow();
@@ -522,6 +537,7 @@ ipcMain.handle('agent:refresh-devices', async () => {
 ipcMain.handle('agent:set-autostart', async (_event, enabled) => {
   setAutoLaunchEnabled(Boolean(enabled));
   configStore.set('preferences.autoLaunch', Boolean(enabled));
+  configStore.set('_hasSetAutoLaunch', true); // 标记用户已手动设置
   return getAutoLaunchEnabled();
 });
 

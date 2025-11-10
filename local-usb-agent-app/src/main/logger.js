@@ -4,13 +4,13 @@ const os = require('os');
 
 function resolveLogDir() {
   if (process.platform === 'darwin') {
-    return path.join(os.homedir(), 'Library', 'Logs', 'LocalUSBPrintAgent');
+    return path.join(os.homedir(), 'Library', 'Logs', 'YeposAgent');
   }
   if (process.platform === 'win32') {
     const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
-    return path.join(base, 'LocalUSBPrintAgent', 'Logs');
+    return path.join(base, 'YeposAgent', 'Logs');
   }
-  return path.join(os.homedir(), '.local', 'share', 'local-usb-print-agent', 'logs');
+  return path.join(os.homedir(), '.local', 'share', 'yepos-agent', 'logs');
 }
 
 const LOG_DIR = resolveLogDir();

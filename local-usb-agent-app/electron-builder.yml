@@ -1,4 +1,4 @@
-productName: LocalUSBPrintAgent
+productName: Yepos Agent
 appId: uk.easyify.local.usb.agent
 files:
   - "dist/**"
@@ -9,19 +9,41 @@ directories:
   output: build
 extraMetadata:
   main: src/main/main.js
+# 图标配置：electron-builder 会自动从 SVG/PNG 生成各平台所需格式
+# macOS 需要 .icns，Windows 需要 .ico，Linux 需要 .png
+# 如果提供 SVG，electron-builder 会自动转换
+icon: src/assets/icon-512.svg
 mac:
   category: public.app-category.utilities
   target:
     - dmg
     - zip
+  # macOS 也可以单独指定 .icns 文件
+  # icon: src/assets/icon.icns
 win:
   target:
     - nsis
+  # Windows 也可以单独指定 .ico 文件
+  # icon: src/assets/icon.ico
+nsis:
+  # 安装后创建启动项快捷方式
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  # 安装后自动运行（可选，但建议通过应用内设置）
+  # runAfterFinish: false
+  # 安装时允许用户选择是否添加到启动项
+  allowToChangeInstallationDirectory: true
+  # 安装后自动启动应用
+  runAfterFinish: false
+  # 卸载时清理启动项
+  deleteAppDataOnUninstall: false
 linux:
   target:
     - AppImage
     - deb
   category: Utility
+  # Linux 也可以单独指定 .png 文件
+  # icon: src/assets/icon.png
 publish:
   - provider: generic
     url: https://pa.easyify.uk/updates/local-usb-agent

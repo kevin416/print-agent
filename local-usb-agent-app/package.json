@@ -1,7 +1,7 @@
 {
   "name": "local-usb-agent-app",
-  "version": "0.2.0",
-  "description": "Electron-based local printing agent with USB support and management UI.",
+  "version": "0.2.1",
+  "description": "Yepos Agent - Local printing agent with USB and TCP support",
   "main": "src/main/main.js",
   "scripts": {
     "dev": "cross-env NODE_ENV=development electron .",

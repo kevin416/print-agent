@@ -85,6 +85,8 @@ Electron Builder 将输出至 `build/` 目录，对应平台的 DMG/ZIP/NSIS/App
   - 确保上层系统传入的文本为 UTF-8，避免重复转码。
   - 检查打印历史/最近测试记录中的错误信息定位问题。
 
+更多型号兼容性及驱动记录请参见 [`docs/printer-compatibility.md`](../docs/printer-compatibility.md)。
+
 ## Windows USB 驱动提示（LIBUSB_ERROR_NOT_SUPPORTED）
 
 在 Windows 终端上，如果出现 `LIBUSB_ERROR_NOT_SUPPORTED`，说明该 USB 打印机仍由系统内置驱动(`usbprint.sys`)托管。要让 Agent 直接写入打印数据，需要将该设备的接口切换成 WinUSB/libusbK 驱动：
