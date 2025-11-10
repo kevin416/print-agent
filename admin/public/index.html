@@ -42,6 +42,26 @@
             font-size: 14px;
         }
 
+        .download-links {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .download-links span {
+            color: #4b5563;
+            font-size: 13px;
+        }
+
+        .download-links a {
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
         .stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -134,6 +154,11 @@
             font-size: 12px;
         }
 
+        .muted {
+            color: #6b7280;
+            font-size: 13px;
+        }
+
         .shop-list {
             list-style: none;
         }
@@ -189,6 +214,24 @@
             color: #991b1b;
         }
 
+        .history-status-success {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #dcfce7;
+            color: #166534;
+            font-weight: 600;
+        }
+
+        .history-status-error {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #991b1b;
+            font-weight: 600;
+        }
+
         .printers-list {
             margin-top: 15px;
         }
@@ -221,6 +264,42 @@
         .printer-actions {
             display: flex;
             gap: 8px;
+        }
+
+        .heartbeat-item {
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .heartbeat-item strong {
+            color: #111827;
+        }
+
+        .heartbeat-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .heartbeat-logs summary {
+            cursor: pointer;
+            color: #4b5563;
+            font-size: 13px;
+        }
+
+        .heartbeat-logs pre {
+            background: #0f172a;
+            color: #94a3b8;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-x: auto;
+            margin-top: 8px;
         }
 
         .modal {
@@ -372,8 +451,24 @@
 <body>
     <div class="container">
         <div class="header">
-            
-            <div style="margin-top: 15px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+            <h1>打印代理管理后台</h1>
+            <p>统一管理各分店本地打印代理，查看连接状态、心跳信息，并进行远程配置。</p>
+            <div class="download-links">
+                <span>客户端下载：</span>
+                <a class="btn btn-small" href="/updates/local-usb-agent/win/LocalUSBPrintAgent-Setup-0.2.0.exe" target="_blank" rel="noopener" download>
+                    🪟 Windows 安装包 (.exe)
+                </a>
+                <a class="btn btn-small" href="/updates/local-usb-agent/win/LocalUSBPrintAgent-0.2.0-win64.zip" target="_blank" rel="noopener" download>
+                    🪟 Windows 免安装 (.zip)
+                </a>
+                <a class="btn btn-small" href="/updates/local-usb-agent/mac/LocalUSBPrintAgent-0.2.0-arm64.dmg" target="_blank" rel="noopener" download>
+                    🍎 macOS 安装包 (.dmg)
+                </a>
+                <a class="btn btn-small" href="/updates/local-usb-agent/mac/LocalUSBPrintAgent-0.2.0-arm64-mac.zip" target="_blank" rel="noopener" download>
+                    🍎 macOS 免安装 (.zip)
+                </a>
+            </div>
+            <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #8b5cf6;">
                 <strong>🖥️ RestDesk 远程运维信息</strong>
                 <p style="margin: 8px 0 0 0; font-size: 14px; color: #666;">
                     在分店电脑上安装 RestDesk 后，填写以下配置即可连接：
@@ -402,6 +497,24 @@ ID服务器: 90.195.120.165:21116
                 <h3>未连接</h3>
                 <div class="value disconnected" id="disconnectedShops">0</div>
             </div>
+            <div class="stat-card">
+                <h3>心跳在线</h3>
+                <div class="value connected" id="heartbeatOnline">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>心跳离线</h3>
+                <div class="value disconnected" id="heartbeatOffline">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>版本分布</h3>
+                <div class="value" id="versionSummary">--</div>
+                <div class="muted" id="versionDetail" style="margin-top:8px;font-size:12px;"></div>
+            </div>
+            <div class="stat-card">
+                <h3>告警数量</h3>
+                <div class="value disconnected" id="alertCount">0</div>
+                <div class="muted" id="alertDetail" style="margin-top:8px;font-size:12px;"></div>
+            </div>
         </div>
 
         <div class="main-content">
@@ -416,8 +529,12 @@ ID服务器: 90.195.120.165:21116
             </div>
 
             <div class="card">
-                <h2>已连接代理</h2>
-                <div id="agentsList">加载中...</div>
+                <h2>本地 Agent 心跳</h2>
+                <div id="heartbeatList">加载中...</div>
+            </div>
+            <div class="card">
+                <h2>异常与告警</h2>
+                <div id="alertsList" class="muted">暂无异常</div>
             </div>
         </div>
     </div>
@@ -529,12 +646,52 @@ ID服务器: 90.195.120.165:21116
         </div>
     </div>
 
+    <div class="modal" id="remoteConfigModal">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header">
+                <h3 id="remoteConfigTitle">远程配置</h3>
+                <button class="close-btn" onclick="closeRemoteConfigModal()">&times;</button>
+            </div>
+            <form id="remoteConfigForm">
+                <p class="muted" style="margin-bottom:12px;">选择默认打印机并可同步更新别名。提交后将通过 WebSocket 实时下发到门店 Agent。</p>
+                <div style="border:1px solid #e5e7eb;border-radius:8px;max-height:360px;overflow:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                        <thead style="background:#f9fafb;">
+                            <tr>
+                                <th style="padding:8px;text-align:left;">默认</th>
+                                <th style="padding:8px;text-align:left;">设备</th>
+                                <th style="padding:8px;text-align:left;">类型</th>
+                                <th style="padding:8px;text-align:left;">别名</th>
+                                <th style="padding:8px;text-align:left;">用途</th>
+                                <th style="padding:8px;text-align:left;">最近状态</th>
+                            </tr>
+                        </thead>
+                        <tbody id="remoteConfigTableBody">
+                            <tr>
+                                <td colspan="6" class="muted" style="padding:12px;text-align:center;">正在加载设备信息...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="remoteConfigEmpty" class="muted" style="margin-top:12px;display:none;"></div>
+                <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;">
+                    <button type="button" class="btn" onclick="closeRemoteConfigModal()">取消</button>
+                    <button type="submit" class="btn btn-success">提交配置</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         let currentShopId = null;
         let shops = [];
+        let heartbeats = [];
+        let heartbeatMap = {};
         let isEditingShop = false;
         let isEditingPrinter = false;
         let editingPrinterOriginalIp = null;
+        let remoteConfigAgent = null;
+        let remoteConfigPrinterMap = {};
 
         const normalizePrinterType = (type) => {
             if (!type) return 'Kitchen';
@@ -568,6 +725,63 @@ ID服务器: 90.195.120.165:21116
             return labelMap[normalized] || normalized;
         };
 
+        function formatRelativeTime(isoString) {
+            if (!isoString) return '--';
+            const target = new Date(isoString).getTime();
+            if (Number.isNaN(target)) return isoString;
+            const diff = Date.now() - target;
+            if (diff < 0) return '刚刚';
+            const seconds = Math.floor(diff / 1000);
+            if (seconds < 60) return `${seconds} 秒前`;
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes} 分钟前`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours} 小时前`;
+            const days = Math.floor(hours / 24);
+            if (days < 7) return `${days} 天前`;
+            return new Date(isoString).toLocaleString();
+        }
+
+        function formatDateTime(isoString) {
+            if (!isoString) return '--';
+            try {
+                return new Date(isoString).toLocaleString();
+            } catch (error) {
+                return isoString;
+            }
+        }
+
+        function formatPrinterLabel(printer) {
+            if (!printer) return '未知打印机';
+            if (printer.connectionType === 'tcp') {
+                const host = printer.ip || printer.host || '未知地址';
+                const port = printer.port || 9100;
+                return `${host}:${port} · TCP`;
+            }
+            const vendor =
+                typeof printer.vendorId === 'number'
+                    ? `0x${printer.vendorId.toString(16)}`
+                    : '未知';
+            const product =
+                typeof printer.productId === 'number'
+                    ? `0x${printer.productId.toString(16)}`
+                    : '未知';
+            return `VID ${vendor} · PID ${product} · USB`;
+        }
+
+        function buildPrinterKey(printer) {
+            if (!printer || typeof printer !== 'object') return '';
+            if (printer.connectionType === 'tcp') {
+                const host = printer.ip || printer.host;
+                if (!host) return '';
+                return `tcp:${host}:${Number(printer.port || 9100)}`;
+            }
+            if (typeof printer.vendorId === 'number' && typeof printer.productId === 'number') {
+                return `usb:${Number(printer.vendorId)}:${Number(printer.productId)}`;
+            }
+            return '';
+        }
+
         function escapeForAttribute(value = '') {
             return String(value)
                 .replace(/\\/g, '\\\\')
@@ -577,18 +791,32 @@ ID服务器: 90.195.120.165:21116
         // 加载数据
         async function loadData() {
             try {
-                const [shopsRes, agentsRes] = await Promise.all([
+                const [shopsRes, agentsRes, heartbeatRes] = await Promise.all([
                     fetch('/api/shops'),
-                    fetch('/api/agents')
+                    fetch('/api/agents'),
+                    fetch('/api/agent-heartbeat')
                 ]);
 
                 const shopsData = await shopsRes.json();
                 const agentsData = await agentsRes.json();
+                const heartbeatData = await heartbeatRes.json();
+                const heartbeatList = Array.isArray(heartbeatData.agents)
+                    ? heartbeatData.agents
+                    : Object.values(heartbeatData.agents || {});
 
                 shops = shopsData.shops || [];
+                heartbeats = heartbeatList;
+                heartbeatMap = heartbeatList.reduce((acc, agent) => {
+                    if (agent && agent.shopId) {
+                        acc[agent.shopId] = agent;
+                    }
+                    return acc;
+                }, {});
+
                 updateStats(shopsData);
+                updateHeartbeatStats(heartbeatData);
                 renderShops(shops);
-                renderAgents(agentsData.agents || []);
+                renderHeartbeats(heartbeats);
             } catch (error) {
                 console.error('加载数据失败:', error);
                 showToast('加载数据失败: ' + error.message, 'error');
@@ -601,6 +829,462 @@ ID服务器: 90.195.120.165:21116
             document.getElementById('disconnectedShops').textContent = (data.total || 0) - (data.connected || 0);
         }
 
+        function updateHeartbeatStats(data) {
+            const list = heartbeats || [];
+            document.getElementById('heartbeatOnline').textContent = data.online || 0;
+            document.getElementById('heartbeatOffline').textContent = data.offline || Math.max(0, (data.total || 0) - (data.online || 0));
+            renderVersionStats(list);
+            renderAlerts(list);
+        }
+
+        function renderVersionStats(list) {
+            const summaryEl = document.getElementById('versionSummary');
+            const detailEl = document.getElementById('versionDetail');
+            if (!Array.isArray(list) || list.length === 0) {
+                summaryEl.textContent = '--';
+                detailEl.textContent = '';
+                return;
+            }
+            const counter = {};
+            list.forEach((agent) => {
+                if (!agent || !agent.version) return;
+                const key = agent.version;
+                counter[key] = (counter[key] || 0) + 1;
+            });
+            const entries = Object.entries(counter).sort((a, b) => b[1] - a[1]);
+            if (!entries.length) {
+                summaryEl.textContent = '未知';
+                detailEl.textContent = '尚无版本上报';
+                return;
+            }
+            const [topVersion, topCount] = entries[0];
+            summaryEl.textContent = `v${topVersion}`;
+            detailEl.textContent = entries.map(([version, count]) => `v${version}: ${count}`).join(' · ');
+        }
+
+        function renderAlerts(list) {
+            const alertContainer = document.getElementById('alertsList');
+            const alertCountEl = document.getElementById('alertCount');
+            const alertDetailEl = document.getElementById('alertDetail');
+
+            if (!Array.isArray(list) || !alertContainer) {
+                alertContainer.textContent = '暂无数据';
+                alertCountEl.textContent = '0';
+                alertDetailEl.textContent = '等待心跳上报';
+                return;
+            }
+
+            const alerts = [];
+
+            list.forEach((agent) => {
+                if (!agent) return;
+                if (!agent.online) {
+                    alerts.push({
+                        type: 'offline',
+                        shopId: agent.shopId,
+                        message: '心跳离线',
+                        timestamp: agent.lastSeenAt
+                    });
+                }
+
+                const printers = Array.isArray(agent.printers) ? agent.printers : [];
+                const defaultPrinter = printers.find((printer) => printer && printer.isDefault);
+                if (!defaultPrinter) {
+                    alerts.push({
+                        type: 'missing-default',
+                        shopId: agent.shopId,
+                        message: '未设置默认打印机',
+                        timestamp: agent.lastSeenAt
+                    });
+                } else if (defaultPrinter.lastTest && defaultPrinter.lastTest.status === 'error') {
+                    alerts.push({
+                        type: 'test-failed',
+                        shopId: agent.shopId,
+                        message: defaultPrinter.lastTest.message || '默认打印机最近测试失败',
+                        timestamp: defaultPrinter.lastTest.timestamp
+                    });
+                }
+
+                if (Array.isArray(agent.logs)) {
+                    const recentError = agent.logs.slice(-20).reverse().find((line) => /error|失败|fatal/i.test(line));
+                    if (recentError) {
+                        alerts.push({
+                            type: 'log',
+                            shopId: agent.shopId,
+                            message: recentError,
+                            timestamp: agent.lastSeenAt
+                        });
+                    }
+                }
+            });
+
+            alertCountEl.textContent = alerts.length;
+            alertDetailEl.textContent = alerts.length ? `最近 ${alerts.length} 条告警` : '暂无告警';
+
+            if (!alerts.length) {
+                alertContainer.innerHTML = '<div class="muted">暂无异常，所有门店状态正常。</div>';
+                return;
+            }
+
+            alertContainer.innerHTML = alerts
+                .slice(0, 20)
+                .map((alert) => {
+                    const time = alert.timestamp ? `${formatRelativeTime(alert.timestamp)} · ${formatDateTime(alert.timestamp)}` : '时间未知';
+                    const displayMessage = summarizeAlertMessage(alert);
+                    return `
+                        <div style="background:#fef2f2;border-radius:8px;padding:12px;margin-bottom:10px;">
+                            <strong style="color:#991b1b;">${alert.shopId}</strong>
+                            <div style="margin-top:6px;color:#991b1b;">${displayMessage.title}</div>
+                            ${displayMessage.details ? `<div class="muted" style="margin-top:6px;font-size:12px;">${displayMessage.details}</div>` : ''}
+                            <div class="muted" style="margin-top:6px;font-size:12px;">${time}</div>
+                        </div>
+                    `;
+                })
+                .join('');
+        }
+
+        function summarizeAlertMessage(alert) {
+            const clean = (text) => {
+                if (!text) return '';
+                const withoutHtml = text.replace(/<[^>]*>/g, ' ');
+                return withoutHtml.replace(/\s+/g, ' ').trim();
+            };
+
+            if (alert.type === 'offline') {
+                return { title: '心跳离线', details: '请检查门店本地 Agent 是否运行、网络是否正常。' };
+            }
+            if (alert.type === 'missing-default') {
+                return { title: '未设置默认打印机', details: '可在门店终端的 Agent 界面勾选“默认”后再尝试。' };
+            }
+            if (alert.type === 'test-failed') {
+                return {
+                    title: '默认打印机最近测试失败',
+                    details: clean(alert.message)
+                };
+            }
+            if (alert.type === 'log') {
+                const msg = clean(alert.message);
+                if (/Auto-update status/i.test(msg) && /Cannot parse update info/i.test(msg)) {
+                    return {
+                        title: '自动更新出错：无法解析更新配置',
+                        details: '请确认更新源中存在 latest-mac.yml（当前返回 stable-mac.yml 或 HTML），并保持 Agent 版本为 0.2.0 以上。'
+                    };
+                }
+                return {
+                    title: '日志告警',
+                    details: msg.length > 160 ? msg.slice(0, 160) + '…' : msg
+                };
+            }
+            return { title: clean(alert.message), details: '' };
+        }
+
+        function getDefaultPrinter(agent) {
+            if (!agent) return null;
+            const printers = Array.isArray(agent.printers) ? agent.printers : [];
+            return printers.find((printer) => printer && printer.isDefault) || null;
+        }
+
+        async function triggerRemoteTest(shopId, button) {
+            if (button) {
+                button.disabled = true;
+                button.textContent = '测试中...';
+            }
+            try {
+                const response = await fetch(`/api/agent-heartbeat/${encodeURIComponent(shopId)}/test-default`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    if (result.task && result.task.id) {
+                        showToast(`已派发测试任务 #${result.task.id}：${shopId}`, 'success');
+                    } else {
+                        showToast(`已发送测试打印：${shopId}`, 'success');
+                    }
+                    setTimeout(loadData, 2000);
+                } else {
+                    showToast(`测试失败：${result.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showToast('测试失败：' + error.message, 'error');
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = '远程测试';
+                }
+            }
+        }
+
+        function renderHeartbeats(list) {
+            const container = document.getElementById('heartbeatList');
+            if (!container) return;
+
+            if (!Array.isArray(list) || list.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无心跳数据</div>';
+            return;
+            }
+
+            container.innerHTML = list.map((agent) => {
+                const statusClass = agent.online ? 'connected' : 'disconnected';
+                const statusLabel = agent.online ? '在线' : '离线';
+                const versionLabel = agent.version ? `v${agent.version}` : '版本未知';
+                const platformLabel = agent.platform ? `${agent.platform}${agent.arch ? ` · ${agent.arch}` : ''}` : '';
+                const serverStatus = agent.server?.running ? '本地服务运行中' : '本地服务未运行';
+                const nextLine = [
+                    versionLabel,
+                    platformLabel,
+                    `设备 ${agent.devicesCount || 0} 台`,
+                    agent.tcpPrinterCount !== undefined ? `TCP ${agent.tcpPrinterCount} 台` : ''
+                ].filter(Boolean).join(' · ');
+                const logPreview = Array.isArray(agent.logs) ? agent.logs.slice(-10) : [];
+                const defaultPrinter = getDefaultPrinter(agent);
+                const defaultInfo = defaultPrinter
+                    ? `默认打印机：${formatPrinterLabel(defaultPrinter)}${defaultPrinter.alias ? ` · ${defaultPrinter.alias}` : ''}`
+                    : '未设置默认打印机';
+                const defaultStatus = defaultPrinter && defaultPrinter.lastTest
+                    ? defaultPrinter.lastTest.status === 'success'
+                        ? `<span class="status-badge connected">最近成功 · ${formatRelativeTime(defaultPrinter.lastTest.timestamp)}</span>`
+                        : `<span class="status-badge disconnected">最近失败 · ${formatRelativeTime(defaultPrinter.lastTest.timestamp)}</span>`
+                    : '';
+                const history = Array.isArray(agent.history) ? agent.history.slice(0, 8) : [];
+                const historyTable = history.length
+                    ? `
+                        <div class="history-block" style="margin-top:12px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                <strong>最近打印记录</strong>
+                                <span class="muted">${history.length} 条</span>
+                            </div>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                    <thead style="background:#f3f4f6;">
+                                        <tr>
+                                            <th style="padding:6px 8px;text-align:left;color:#4b5563;">时间</th>
+                                            <th style="padding:6px 8px;text-align:left;color:#4b5563;">设备</th>
+                                            <th style="padding:6px 8px;text-align:left;color:#4b5563;">状态</th>
+                                            <th style="padding:6px 8px;text-align:left;color:#4b5563;">详情</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${history
+                                            .map((record) => {
+                                                const statusClass = record.status === 'success' ? 'history-status-success' : 'history-status-error';
+                                                const label =
+                                                    record.connectionType === 'tcp'
+                                                        ? `${record.ip || record.host || '未知地址'}:${record.port || 9100} · TCP`
+                                                        : formatPrinterLabel(record);
+                                                const detail = record.message || record.reason || '';
+                                                return `
+                                                    <tr>
+                                                        <td style="padding:6px 8px;color:#111827;">${formatDateTime(record.timestamp)}</td>
+                                                        <td style="padding:6px 8px;color:#374151;">${label}</td>
+                                                        <td style="padding:6px 8px;">
+                                                            <span class="${statusClass}">${record.status === 'success' ? '成功' : '失败'}</span>
+                                                        </td>
+                                                        <td style="padding:6px 8px;color:#6b7280;max-width:220px;word-break:break-all;">${detail}</td>
+                                                    </tr>
+                                                `;
+                                            })
+                                            .join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `
+                    : '';
+                return `
+                    <div class="heartbeat-item">
+                        <div class="heartbeat-top">
+                            <div>
+                                <strong>${agent.shopId}</strong>
+                                ${agent.companyId ? `<span class="shop-id" style="margin-left:8px;background:#eef2ff;color:#3730a3;">公司 ID: ${agent.companyId}</span>` : ''}
+                            </div>
+                            <span class="status-badge ${statusClass}">${statusLabel}</span>
+                        </div>
+                        <div class="muted">最后心跳：${formatDateTime(agent.lastSeenAt)}（${formatRelativeTime(agent.lastSeenAt)}）</div>
+                        <div class="muted" style="margin-top:4px;">${nextLine}</div>
+                        <div class="muted" style="margin-top:4px;">${serverStatus} · 端口 ${agent.server?.port || 40713}</div>
+                        <div class="muted" style="margin-top:4px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            ${defaultInfo}
+                            ${defaultStatus}
+                            <div style="margin-left:auto; display:flex; gap:6px;">
+                                <button class="btn btn-small" ${agent.online && defaultPrinter ? '' : 'disabled'} onclick="triggerRemoteTest('${agent.shopId}', this)">远程测试</button>
+                                <button class="btn btn-small btn-success" onclick="openRemoteConfig('${agent.shopId}')">远程配置</button>
+                            </div>
+                        </div>
+                        ${agent.remoteAddress ? `<div class="muted" style="margin-top:4px;">来源 IP：${agent.remoteAddress}</div>` : ''}
+                        ${logPreview.length ? `
+                            <details class="heartbeat-logs" style="margin-top:10px;">
+                                <summary>最近日志 (${logPreview.length} 行)</summary>
+                                <pre>${logPreview.map(line => line.replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('\\n')}</pre>
+                            </details>
+                        ` : ''}
+                        ${historyTable}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function openRemoteConfig(shopId) {
+            const modal = document.getElementById('remoteConfigModal');
+            const title = document.getElementById('remoteConfigTitle');
+            const tbody = document.getElementById('remoteConfigTableBody');
+            const emptyHint = document.getElementById('remoteConfigEmpty');
+            if (!modal || !tbody) return;
+
+            const agent = heartbeatMap[shopId];
+            if (!agent) {
+                showToast('未找到该门店的心跳数据', 'error');
+                return;
+            }
+
+            remoteConfigAgent = agent;
+            remoteConfigPrinterMap = {};
+            title.textContent = `远程配置 · ${shopId}`;
+
+            const printers = Array.isArray(agent.printers) && agent.printers.length
+                ? agent.printers
+                : Array.isArray(agent.devices)
+                    ? agent.devices
+                    : [];
+
+            if (!printers.length) {
+                tbody.innerHTML = '';
+                if (emptyHint) {
+                    emptyHint.style.display = 'block';
+                    emptyHint.textContent = '该门店尚未上报打印设备，无法远程配置。';
+                }
+            } else {
+                if (emptyHint) {
+                    emptyHint.style.display = 'none';
+                }
+                tbody.innerHTML = printers
+                    .map((printer, index) => {
+                        const key = buildPrinterKey(printer) || `printer-${index}`;
+                        remoteConfigPrinterMap[key] = printer;
+                        const alias = printer.alias || '';
+                        const isDefault = Boolean(printer.isDefault);
+                        const lastTest = printer.lastTest;
+                        const lastStatus = lastTest
+                            ? `<span class="${lastTest.status === 'success' ? 'history-status-success' : 'history-status-error'}">${lastTest.status === 'success' ? '成功' : '失败'}</span> · ${formatRelativeTime(lastTest.timestamp)}`
+                            : '<span class="muted">暂无记录</span>';
+                        const aliasValue = escapeForAttribute(alias);
+                        return `
+                            <tr>
+                                <td style="padding:6px 8px;">
+                                    <input type="radio" name="remote-default" value="${key}" ${isDefault ? 'checked' : ''}>
+                                </td>
+                                <td style="padding:6px 8px;">${formatPrinterLabel(printer)}</td>
+                                <td style="padding:6px 8px;">${printer.connectionType === 'tcp' ? 'TCP' : 'USB'}</td>
+                                <td style="padding:6px 8px;">
+                                    <input class="remote-alias" data-key="${key}" type="text" value="${aliasValue}" placeholder="别名 / 用途" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:6px;">
+                                </td>
+                                <td style="padding:6px 8px;">${printer.role || '--'}</td>
+                                <td style="padding:6px 8px;">${lastStatus}</td>
+                            </tr>
+                        `;
+                    })
+                    .join('');
+            }
+
+            modal.classList.add('active');
+        }
+
+        function closeRemoteConfigModal() {
+            const modal = document.getElementById('remoteConfigModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+            remoteConfigAgent = null;
+            remoteConfigPrinterMap = {};
+            const form = document.getElementById('remoteConfigForm');
+            if (form) {
+                form.reset();
+            }
+        }
+
+        async function submitRemoteConfig(event) {
+            event.preventDefault();
+            if (!remoteConfigAgent || !remoteConfigAgent.shopId) {
+                showToast('未选择需要配置的门店', 'error');
+                return;
+            }
+
+            const form = event.target;
+            const submitButton = form.querySelector('button[type="submit"]');
+            const selected = form.querySelector('input[name="remote-default"]:checked');
+            if (!selected) {
+                showToast('请选择默认打印机', 'error');
+                return;
+            }
+
+            const aliasInputs = form.querySelectorAll('.remote-alias');
+            const aliasMap = {};
+            aliasInputs.forEach((input) => {
+                aliasMap[input.dataset.key] = input.value || '';
+            });
+
+            const payload = { printerMappings: {} };
+            Object.entries(remoteConfigPrinterMap).forEach(([key, printer]) => {
+                const connectionType =
+                    printer.connectionType ||
+                    (typeof printer.vendorId === 'number' && typeof printer.productId === 'number' ? 'usb' : 'tcp');
+                const entry = {
+                    connectionType,
+                    alias: aliasMap[key] ?? printer.alias ?? '',
+                    role: printer.role || '',
+                    isDefault: key === selected.value
+                };
+                if (connectionType === 'usb') {
+                    entry.vendorId = Number(printer.vendorId);
+                    entry.productId = Number(printer.productId);
+                } else {
+                    entry.ip = printer.ip || printer.host || '';
+                    entry.port = Number(printer.port || 9100);
+                }
+                payload.printerMappings[key] = entry;
+            });
+
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = '提交中...';
+            }
+
+            fetch('/api/agent/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shopId: remoteConfigAgent.shopId,
+                    type: 'config',
+                    payload
+                })
+            })
+                .then(async (response) => {
+                    let data = {};
+                    if (response.headers.get('content-type')?.includes('application/json')) {
+                        data = await response.json();
+                    } else {
+                        const text = await response.text();
+                        throw new Error(text || '远程接口返回非 JSON 数据');
+                    }
+                    if (data.success) {
+                        showToast('远程配置任务已下发');
+                        closeRemoteConfigModal();
+                        setTimeout(loadData, 2000);
+                    } else {
+                        throw new Error(data.error || '未知错误');
+                    }
+                })
+                .catch((error) => {
+                    showToast('配置失败：' + (error?.message || error), 'error');
+                })
+                .finally(() => {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = '提交配置';
+                    }
+                });
+        }
+
         function renderShops(shops) {
             const list = document.getElementById('shopList');
             if (shops.length === 0) {
@@ -611,6 +1295,13 @@ ID服务器: 90.195.120.165:21116
             list.innerHTML = shops.map(shop => {
                 const printers = Array.isArray(shop.printers) ? shop.printers : [];
                 const safeShopId = escapeForAttribute(shop.shopId || '');
+                const heartbeat = heartbeatMap[shop.shopId] || null;
+                const heartbeatBadge = heartbeat
+                    ? `<span class="status-badge ${heartbeat.online ? 'connected' : 'disconnected'}" title="最后心跳：${formatDateTime(heartbeat.lastSeenAt)}">${heartbeat.online ? '心跳在线' : '心跳离线'}</span>`
+                    : '<span class="status-badge disconnected">无心跳</span>';
+                const heartbeatInfo = heartbeat
+                    ? `<div class="muted" style="margin-top:6px;">心跳：${formatRelativeTime(heartbeat.lastSeenAt)} · ${heartbeat.version ? `v${heartbeat.version}` : '版本未知'}</div>`
+                    : '<div class="muted" style="margin-top:6px;">心跳：尚未收到</div>';
                 return `
                 <li class="shop-item">
                     <div class="shop-header">
@@ -618,11 +1309,13 @@ ID服务器: 90.195.120.165:21116
                             <div class="shop-name">${shop.name || shop.shopId}</div>
                             <div class="shop-id">${shop.shopId}</div>
                             ${shop.managerCompanyId ? `<div class="shop-id" style="margin-top:4px; background:#eef2ff; color:#3730a3;">公司 ID: ${shop.managerCompanyId}</div>` : ''}
+                            ${heartbeatInfo}
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span class="status-badge ${shop.connected ? 'connected' : 'disconnected'}">
                                 ${shop.connected ? '✓ 已连接' : '✗ 未连接'}
                             </span>
+                            ${heartbeatBadge}
                             <button class="btn btn-small" onclick="showEditShopModal('${safeShopId}')">编辑</button>
                         </div>
                     </div>
@@ -657,27 +1350,6 @@ ID服务器: 90.195.120.165:21116
                     </div>
                 </li>
             `}).join('');
-        }
-
-        function renderAgents(agents) {
-            const list = document.getElementById('agentsList');
-            if (agents.length === 0) {
-                list.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无已连接的代理</div>';
-                return;
-            }
-
-            list.innerHTML = agents.map(agent => `
-                <div style="padding: 15px; background: #f9fafb; border-radius: 8px; margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>${agent.shopId}</strong>
-                            <span class="status-badge ${agent.connected ? 'connected' : 'disconnected'}" style="margin-left: 10px;">
-                                ${agent.connected ? '已连接' : '未连接'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
         }
 
         // 添加分店
@@ -885,6 +1557,11 @@ ID服务器: 90.195.120.165:21116
                 showToast('操作失败: ' + error.message, 'error');
             }
         });
+
+        const remoteConfigForm = document.getElementById('remoteConfigForm');
+        if (remoteConfigForm) {
+            remoteConfigForm.addEventListener('submit', submitRemoteConfig);
+        }
 
         // 删除打印机
         async function deletePrinter(shopId, ip) {
@@ -1133,6 +1810,8 @@ ID服务器: 90.195.120.165:21116
 
             copyTextToClipboard({ event, text: command, onSuccess })
         }
+
+        window.triggerRemoteTest = triggerRemoteTest;
 
         function copyRestDeskInfo(event) {
             const info = document.getElementById('restDeskInfo');

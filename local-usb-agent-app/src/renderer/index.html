@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>本地打印 Agent 控制面板</title>
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self'">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f6fa;
+      color: #1f2933;
+    }
+    header {
+      background: #1f6feb;
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    main {
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.08);
+      padding: 20px;
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-chip {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-online {
+      background: #ecfdf5;
+      color: #047857;
+    }
+    .status-offline {
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .form-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .form-field {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 13px;
+      color: #475569;
+    }
+    input, select {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #cbd5f5;
+      font-size: 14px;
+    }
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button.primary {
+      background: #1f6feb;
+      color: #fff;
+    }
+    button.secondary {
+      background: #e2e8f0;
+      color: #1f2933;
+    }
+    button.danger {
+      background: #f87171;
+      color: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 8px 4px;
+      text-align: left;
+    }
+    th {
+      font-weight: 600;
+      color: #475569;
+    }
+    .log-viewer {
+      background: #0f172a;
+      color: #94a3b8;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .flex-between {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .muted {
+      color: #64748b;
+      font-size: 13px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0c4a6e;
+      font-size: 11px;
+    }
+    .history-table tbody tr:nth-child(odd) {
+      background: #f8fafc;
+    }
+    .history-status-success {
+      color: #047857;
+      font-weight: 600;
+    }
+    .history-status-error {
+      color: #b91c1c;
+      font-weight: 600;
+    }
+    .progress-track {
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #1f6feb;
+      transition: width 0.2s ease;
+    }
+    .chips {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+    }
+    select {
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #cbd5f5;
+      font-size: 14px;
+      background-color: #fff;
+    }
+    .onboarding-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+    }
+    .onboarding-hidden {
+      display: none;
+    }
+    .onboarding-modal {
+      width: 520px;
+      max-width: 90%;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.4);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .onboarding-header h2 {
+      margin: 0;
+      font-size: 24px;
+      color: #1f2937;
+    }
+    .onboarding-header p {
+      margin: 8px 0 0 0;
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .onboarding-body {
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .onboarding-body ul {
+      margin: 12px 0 0 18px;
+      padding: 0;
+    }
+    .onboarding-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      align-items: center;
+    }
+    .onboarding-footer .spacer {
+      flex: 1;
+    }
+    #btn-onboarding-prev {
+      display: none;
+    }
+    #btn-onboarding-next:disabled {
+      background: #cbd5f5;
+      cursor: not-allowed;
+    }
+    #btn-onboarding-skip {
+      color: #475569;
+      background: transparent;
+      border: none;
+      padding: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <strong>本地 USB 打印 Agent</strong>
+    <span id="status-chip" class="status-chip status-offline">状态未知</span>
+  </div>
+  <div class="muted" id="status-meta">--</div>
+</header>
+<main>
+  <section class="card" id="config-card">
+    <div class="flex-between">
+      <h2>基础配置</h2>
+      <div>
+        <button class="secondary" id="btn-save-config">保存配置</button>
+        <button class="secondary" id="btn-refresh">重新检测</button>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-field">
+        <label for="shop-id">分店 Shop ID</label>
+        <input type="text" id="shop-id" placeholder="例如 bbq-ktv 或数值 companyId">
+      </div>
+      <div class="form-field">
+        <label for="server-port">本地服务端口</label>
+        <input type="number" id="server-port" min="1000" max="65535">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:16px; align-items:center;">
+      <label style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="autostart-toggle">
+        随系统启动
+      </label>
+      <label style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="allow-self-signed">
+        允许自签名证书 (调试)
+      </label>
+    </div>
+  </section>
+
+  <section class="card" id="updater-card">
+    <div class="flex-between">
+      <h2>版本与更新</h2>
+      <div class="chips">
+        <span id="version-badge" class="status-chip status-online">v0.0.0</span>
+        <span id="update-status" class="status-chip status-offline">尚未检查</span>
+      </div>
+    </div>
+    <div class="muted" id="update-message">自动更新配置未启用</div>
+    <div class="form-row" style="margin-top:16px;">
+      <div class="form-field">
+        <label for="updates-feed-url">更新源地址</label>
+        <input type="text" id="updates-feed-url" placeholder="https://.../updates/local-usb-agent">
+      </div>
+      <div class="form-field">
+        <label for="updates-channel">更新通道</label>
+        <select id="updates-channel">
+          <option value="stable">稳定版</option>
+          <option value="beta">Beta 测试</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label style="visibility:hidden;">自动下载</label>
+        <label style="display:flex; gap:8px; align-items:center;">
+          <input type="checkbox" id="updates-auto-download" checked>
+          自动下载更新
+        </label>
+      </div>
+    </div>
+    <div class="flex-between" style="margin-top:16px;">
+      <div>
+        <button class="secondary" id="btn-check-update">检查更新</button>
+        <button class="primary" id="btn-install-update" disabled>立即安装</button>
+      </div>
+      <div class="muted" id="update-last-checked">--</div>
+    </div>
+    <div id="update-progress" style="margin-top:12px; display:none;">
+      <div class="muted" id="update-progress-label">下载进度</div>
+      <div class="progress-track">
+        <div class="progress-fill" id="update-progress-fill" style="width:0%;"></div>
+      </div>
+    </div>
+    <details id="update-release-notes" style="margin-top:12px; display:none;">
+      <summary>发行说明</summary>
+      <div id="update-release-content" class="muted" style="margin-top:8px; white-space:pre-wrap;"></div>
+    </details>
+  </section>
+
+  <section class="card" id="telemetry-card">
+    <div class="flex-between">
+      <h2>远程监控</h2>
+      <div class="chips">
+        <span id="telemetry-status-chip" class="status-chip status-offline">未启用</span>
+        <span id="telemetry-last-sync" class="status-chip">--</span>
+      </div>
+    </div>
+    <div class="muted" id="telemetry-message">尚未开启心跳上报。</div>
+    <div class="form-row" style="margin-top:16px;">
+      <label style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="telemetry-enabled">
+        启用心跳上报
+      </label>
+      <label style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="telemetry-include-logs">
+        上传日志尾部
+      </label>
+    </div>
+    <div class="form-row">
+      <div class="form-field">
+        <label for="telemetry-endpoint">上报地址</label>
+        <input type="text" id="telemetry-endpoint" placeholder="https://pa.easyify.uk/api/agent-heartbeat">
+      </div>
+      <div class="form-field">
+        <label for="telemetry-interval">上报间隔（秒）</label>
+        <input type="number" id="telemetry-interval" min="15" value="30">
+      </div>
+    </div>
+    <div class="flex-between" style="margin-top:16px;">
+      <div class="muted" id="telemetry-next-sync">下次心跳：--</div>
+      <div>
+        <button class="secondary" id="btn-send-heartbeat">立即同步</button>
+      </div>
+    </div>
+    <details id="telemetry-log-preview" style="margin-top:12px; display:none;">
+      <summary>最近上传日志</summary>
+      <pre id="telemetry-log-content" class="log-viewer" style="max-height:160px;"></pre>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="flex-between">
+      <h2>USB 设备映射</h2>
+      <button class="secondary" id="btn-refresh-devices">刷新列表</button>
+    </div>
+    <p class="muted">请将打印机连接到计算机，点击刷新查看识别情况。可在下方为每个设备指定别名。</p>
+    <table>
+      <thead>
+        <tr>
+          <th>设备</th>
+          <th>Vendor ID</th>
+          <th>Product ID</th>
+          <th>备注名称</th>
+          <th>用途</th>
+          <th>默认</th>
+          <th>操作</th>
+          <th>最近状态</th>
+        </tr>
+      </thead>
+      <tbody id="device-table"></tbody>
+    </table>
+  </section>
+
+  <section class="card" id="history-card">
+    <div class="flex-between">
+      <h2>打印测试历史</h2>
+      <div>
+        <button class="secondary" id="btn-refresh-history">刷新</button>
+        <button class="secondary" id="btn-clear-history">清空记录</button>
+      </div>
+    </div>
+    <div class="muted" id="history-summary">最近 0 条记录</div>
+    <table class="history-table" style="margin-top:12px;">
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>设备</th>
+          <th>别名 / 用途</th>
+          <th>状态</th>
+          <th>详情</th>
+        </tr>
+      </thead>
+      <tbody id="history-table-body">
+        <tr><td colspan="5" style="color:#64748b;text-align:center;padding:16px;">暂无测试记录</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <div class="flex-between">
+      <h2>日志</h2>
+      <button class="secondary" id="btn-refresh-logs">刷新日志</button>
+    </div>
+    <div class="muted" id="log-path"></div>
+    <div class="log-viewer" id="log-viewer">尚无日志</div>
+  </section>
+</main>
+<div id="onboarding-backdrop" class="onboarding-backdrop onboarding-hidden">
+  <div class="onboarding-modal">
+    <div class="onboarding-header">
+      <h2 id="onboarding-title">欢迎使用</h2>
+      <p id="onboarding-subtitle"></p>
+    </div>
+    <div id="onboarding-body" class="onboarding-body"></div>
+    <div class="onboarding-footer">
+      <button id="btn-onboarding-skip">跳过引导</button>
+      <div class="spacer"></div>
+      <button id="btn-onboarding-prev" class="secondary">上一步</button>
+      <button id="btn-onboarding-next" class="primary">继续</button>
+    </div>
+  </div>
+</div>
+<script src="renderer.js"></script>
+</body>
+</html>

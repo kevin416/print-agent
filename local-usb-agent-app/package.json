@@ -1,0 +1,27 @@
+{
+  "name": "local-usb-agent-app",
+  "version": "0.2.0",
+  "description": "Electron-based local printing agent with USB support and management UI.",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development electron .",
+    "start": "electron .",
+    "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.3.9",
+    "express": "^4.19.2",
+    "iconv-lite": "^0.6.3",
+    "net": "^1.0.2",
+    "usb": "^2.9.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^30.0.9",
+    "electron-builder": "^24.13.3"
+  }
+}

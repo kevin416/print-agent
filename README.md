@@ -13,6 +13,7 @@
 > - [迁移指南](docs/migration.md)
 > - [自启动方案](docs/auto-start.md)
 > - [问题排查](docs/troubleshooting.md)
+> - [本地 USB Agent 方案（新）](docs/local-usb-agent.md)
 
 ## 🔭 总览
 

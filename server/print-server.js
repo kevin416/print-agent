@@ -24,6 +24,50 @@ const NODE_ENV = process.env.NODE_ENV || 'production'
 // WebSocket 服务器（用于本地代理服务连接）
 let wss = null
 const localAgents = new Map() // shopId -> WebSocket
+const agentStates = new Map() // shopId -> state object
+const taskHistory = new Map() // taskId -> task details
+const recentTasks = []
+const TASK_TIMEOUT_MS = 30_000
+const MAX_RECENT_TASKS = 200
+
+function generateTaskId() {
+  return `task_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+}
+
+function serializeTask(task) {
+  if (!task) return null
+  const { timeoutHandle, ...rest } = task
+  return rest
+}
+
+function serializeAgentState(state) {
+  if (!state) return null
+  const devices = Array.isArray(state.devices) ? state.devices : []
+  const tcpCount = devices.filter((device) => device && device.connectionType === 'tcp').length
+  return {
+    shopId: state.shopId,
+    connected: Boolean(state.ws && state.ws.readyState === WebSocket.OPEN),
+    readyState: state.ws ? state.ws.readyState : WebSocket.CLOSED,
+    online: Boolean(state.ws && state.ws.readyState === WebSocket.OPEN),
+    connectedAt: state.connectedAt,
+    disconnectedAt: state.disconnectedAt,
+    lastHeartbeatAt: state.lastHeartbeatAt,
+    lastHeartbeat: state.lastHeartbeat,
+    version: state.version,
+    platform: state.platform,
+    arch: state.arch,
+    hostname: state.hostname,
+    remoteAddress: state.remoteAddress,
+    telemetry: state.telemetry || null,
+    devices,
+    printers: devices,
+    devicesCount: devices.length,
+    tcpPrinterCount: tcpCount,
+    history: state.history || [],
+    lastTask: state.lastTask || null,
+    lastError: state.lastError || null
+  }
+}
 
 // ============================================
 // 中间件配置
@@ -84,6 +128,182 @@ function convertToGBK(utf8Buffer) {
   } catch (error) {
     console.error('编码转换失败:', error.message)
     return utf8Buffer
+  }
+}
+
+function getAgentState(shopId) {
+  let state = agentStates.get(shopId)
+  if (!state) {
+    state = {
+      shopId,
+      ws: null,
+      connectedAt: null,
+      disconnectedAt: null,
+      lastHeartbeatAt: null,
+      lastHeartbeat: null,
+      version: null,
+      platform: null,
+      arch: null,
+      hostname: null,
+      remoteAddress: null,
+      telemetry: null,
+      devices: [],
+      history: [],
+      lastTask: null,
+      lastError: null
+    }
+    agentStates.set(shopId, state)
+  }
+  return state
+}
+
+function attachWebSocketToState(shopId, ws, remoteAddress) {
+  const state = getAgentState(shopId)
+  if (state.ws && state.ws !== ws) {
+    try {
+      state.ws.terminate()
+    } catch (error) {
+      // ignore
+    }
+  }
+  state.ws = ws
+  state.connectedAt = new Date().toISOString()
+  state.disconnectedAt = null
+  state.remoteAddress = remoteAddress || null
+  state.lastError = null
+  return state
+}
+
+function markAgentDisconnected(shopId) {
+  const state = agentStates.get(shopId)
+  if (!state) return
+  state.disconnectedAt = new Date().toISOString()
+  state.ws = null
+}
+
+function recordTask(task) {
+  taskHistory.set(task.id, task)
+  recentTasks.unshift(task)
+  if (recentTasks.length > MAX_RECENT_TASKS) {
+    const removed = recentTasks.pop()
+    if (removed && removed.id && removed !== task) {
+      taskHistory.delete(removed.id)
+    }
+  }
+}
+
+function updateTask(taskId, updates) {
+  const task = taskHistory.get(taskId)
+  if (!task) return null
+  Object.assign(task, updates)
+  return task
+}
+
+function dispatchTask(shopId, type, payload = {}) {
+  const state = getAgentState(shopId)
+  if (!state || !state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    throw new Error(`分店 ${shopId} 的本地代理未连接`)
+  }
+
+  const id = generateTaskId()
+  const createdAt = new Date().toISOString()
+  const task = {
+    id,
+    shopId,
+    type,
+    status: 'pending',
+    payload,
+    createdAt,
+    sentAt: null,
+    completedAt: null,
+    error: null,
+    result: null
+  }
+
+  recordTask(task)
+
+  let messageType = type
+  switch (type) {
+    case 'print':
+    case 'print-test':
+      messageType = 'task_print'
+      break
+    case 'config':
+      messageType = 'task_config'
+      break
+    case 'ping':
+      messageType = 'task_ping'
+      break
+    default:
+      messageType = type
+  }
+
+  const message = {
+    type: messageType,
+    id,
+    payload
+  }
+
+  try {
+    state.ws.send(JSON.stringify(message))
+    task.status = 'sent'
+    task.sentAt = new Date().toISOString()
+    task.timeoutHandle = setTimeout(() => {
+      updateTask(id, {
+        status: 'timeout',
+        error: 'Agent 未响应',
+        completedAt: new Date().toISOString()
+      })
+    }, TASK_TIMEOUT_MS)
+    state.lastTask = { id, type, status: 'sent', sentAt: task.sentAt }
+  } catch (error) {
+    task.status = 'error'
+    task.error = error.message || '发送任务失败'
+    task.completedAt = new Date().toISOString()
+    state.lastTask = { id, type, status: 'error', error: task.error, sentAt: task.sentAt }
+    throw error
+  }
+
+  return serializeTask(task)
+}
+
+function handleTaskResult(message, state) {
+  const { id, payload } = message
+  const task = updateTask(id, {
+    status: payload?.status || 'success',
+    result: payload || null,
+    error: payload?.status === 'success' ? null : payload?.message || null,
+    completedAt: new Date().toISOString()
+  })
+  if (task && task.timeoutHandle) {
+    clearTimeout(task.timeoutHandle)
+    delete task.timeoutHandle
+  }
+  if (state) {
+    state.lastTask = {
+      id,
+      type: task?.type || '',
+      status: task?.status,
+      completedAt: task?.completedAt,
+      error: task?.error || null
+    }
+    if (task?.error) {
+      state.lastError = task.error
+    }
+  }
+}
+
+function ack(ws, message) {
+  try {
+    ws.send(
+      JSON.stringify({
+        type: 'ack',
+        id: message?.id || undefined,
+        payload: { message: 'ok' }
+      })
+    )
+  } catch (error) {
+    // ignore
   }
 }
 
@@ -215,17 +435,57 @@ app.get('/api/print/health', (req, res) => {
  * 获取已连接的分店列表
  */
 app.get('/api/print/agents', (req, res) => {
-  const agents = Array.from(localAgents.entries()).map(([shopId, ws]) => ({
-    shopId,
-    connected: ws.readyState === WebSocket.OPEN,
-    readyState: ws.readyState
-  }))
-  
+  const agents = Array.from(agentStates.values()).map(serializeAgentState)
   res.json({
     agents,
     total: agents.length,
-    connected: agents.filter(a => a.connected).length
+    connected: agents.filter((a) => a.connected).length
   })
+})
+
+app.get('/api/agent/states', (req, res) => {
+  const agents = Array.from(agentStates.values()).map(serializeAgentState)
+  res.json({
+    agents,
+    total: agents.length,
+    connected: agents.filter((a) => a.connected).length
+  })
+})
+
+app.get('/api/agent/states/:shopId', (req, res) => {
+  const state = serializeAgentState(agentStates.get(req.params.shopId))
+  if (!state) {
+    return res.status(404).json({ success: false, error: '未找到门店状态' })
+  }
+  res.json({ success: true, agent: state })
+})
+
+app.get('/api/agent/tasks', (req, res) => {
+  res.json({
+    tasks: recentTasks.map(serializeTask),
+    total: recentTasks.length
+  })
+})
+
+app.get('/api/agent/tasks/:id', (req, res) => {
+  const task = serializeTask(taskHistory.get(req.params.id))
+  if (!task) {
+    return res.status(404).json({ success: false, error: '未找到任务' })
+  }
+  res.json({ success: true, task })
+})
+
+app.post('/api/agent/tasks', (req, res) => {
+  try {
+    const { shopId, type, payload } = req.body || {}
+    if (!shopId || !type) {
+      return res.status(400).json({ success: false, error: 'shopId 与 type 必填' })
+    }
+    const task = dispatchTask(shopId, type, payload || {})
+    res.json({ success: true, task })
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message || '任务下发失败' })
+  }
 })
 
 /**
@@ -281,13 +541,47 @@ wss.on('connection', (ws, req) => {
   
   console.log(`✅ 本地代理已连接: ${shopId}`)
   localAgents.set(shopId, ws)
+  const state = attachWebSocketToState(shopId, ws, req.socket?.remoteAddress)
   
   // 处理消息
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString())
-      if (message.type === 'register') {
-        console.log(`   📋 代理信息: ${message.platform || 'unknown'} - ${message.hostname || 'unknown'}`)
+      const type = message.type
+      const payload = message.payload !== undefined ? message.payload : message
+
+      switch (type) {
+        case 'register': {
+          state.version = payload.version || payload.agentVersion || payload.versionId || null
+          state.platform = payload.platform || null
+          state.arch = payload.arch || null
+          state.hostname = payload.hostname || null
+          state.capabilities = payload.capabilities || []
+          console.log(`   📋 代理信息: ${state.platform || 'unknown'} · ${state.hostname || 'unknown'} · v${state.version || 'unknown'}`)
+          ack(ws, message)
+          break
+        }
+        case 'heartbeat': {
+          state.lastHeartbeatAt = new Date().toISOString()
+          state.lastHeartbeat = payload
+          state.devices = Array.isArray(payload.devices) ? payload.devices : []
+          state.history = Array.isArray(payload.history) ? payload.history.slice(0, 50) : []
+          state.telemetry = payload.telemetry || null
+          ack(ws, message)
+          break
+        }
+        case 'task_result': {
+          handleTaskResult(message, state)
+          break
+        }
+        case 'log_event': {
+          if (payload.level && /error|warn/i.test(payload.level)) {
+            state.lastError = payload.message || null
+          }
+          break
+        }
+        default:
+          break
       }
     } catch (error) {
       // 忽略解析错误
@@ -300,11 +594,16 @@ wss.on('connection', (ws, req) => {
     if (localAgents.get(shopId) === ws) {
       localAgents.delete(shopId)
     }
+    markAgentDisconnected(shopId)
   })
   
   // 错误处理
   ws.on('error', (error) => {
     console.error(`❌ WebSocket 错误 (${shopId}):`, error.message)
+    const agent = agentStates.get(shopId)
+    if (agent) {
+      agent.lastError = error.message
+    }
   })
   
   // 心跳

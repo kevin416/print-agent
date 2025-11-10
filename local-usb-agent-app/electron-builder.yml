@@ -1,0 +1,27 @@
+productName: LocalUSBPrintAgent
+appId: uk.easyify.local.usb.agent
+files:
+  - "dist/**"
+  - "src/**/*"
+  - "package.json"
+asar: false
+directories:
+  output: build
+extraMetadata:
+  main: src/main/main.js
+mac:
+  category: public.app-category.utilities
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+publish:
+  - provider: generic
+    url: https://pa.easyify.uk/updates/local-usb-agent

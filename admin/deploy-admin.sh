@@ -19,17 +19,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 上传文件
-echo "📤 上传文件..."
+echo "📤 上传管理后台文件..."
 scp admin-server.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp package.json $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp ecosystem.config.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp nginx.conf $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp -r public $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 
+echo "📦 同步客户端安装包..."
+rsync -av --delete ../updates/ $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
+
 # 部署
 echo ""
 echo "🔧 部署服务..."
-ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
+ssh $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS' bash -s" << 'ENDSSH'
 set -e
 
 cd ~/print-agent/admin
@@ -51,10 +54,14 @@ ENDSSH
 
 echo ""
 echo "📝 配置 Nginx..."
-ssh $SERVER_USER@$SERVER_HOST << 'ENDSSH'
+ssh $SERVER_USER@$SERVER_HOST "SUDO_PASS='$SUDO_PASS' bash -s" << 'ENDSSH'
 set -e
 
 cd ~/print-agent/admin
+
+if [ -n "${SUDO_PASS:-}" ]; then
+    sudo() { echo "$SUDO_PASS" | command sudo -S "$@"; }
+fi
 
 # 备份现有配置
 if [ -f /etc/nginx/sites-available/pa.easyify.uk ]; then

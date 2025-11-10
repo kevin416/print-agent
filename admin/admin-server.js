@@ -25,6 +25,9 @@ console.log('[admin] 默认 WebSocket 地址:', DEFAULT_WS_URL)
 
 const DATA_DIR = path.join(__dirname, 'data')
 const DATA_FILE = path.join(DATA_DIR, 'shops.json')
+const HEARTBEAT_FILE = path.join(DATA_DIR, 'agent-heartbeats.json')
+const HEARTBEAT_OFFLINE_THRESHOLD_MS = Number(process.env.HEARTBEAT_OFFLINE_THRESHOLD_MS || 90_000)
+const UPDATES_DIR = path.join(__dirname, '..', 'updates')
 
 function loadLocalAgentSource() {
   const candidates = [
@@ -56,6 +59,20 @@ app.use(cors())
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: false }))
 app.use(express.static(path.join(__dirname, 'public')))
+app.use(
+  '/updates',
+  express.static(UPDATES_DIR, {
+    setHeaders(res, filePath) {
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      if (filePath.endsWith('.yml') || filePath.endsWith('.yaml')) {
+        res.type('text/yaml')
+      }
+      if (filePath.endsWith('.blockmap')) {
+        res.type('application/octet-stream')
+      }
+    }
+  })
+)
 
 /**
  * Ensure data directory and file exist
@@ -67,6 +84,20 @@ async function ensureDataFile() {
       DATA_FILE,
       {
         shops: [],
+        updatedAt: new Date().toISOString()
+      },
+      { spaces: 2 }
+    )
+  }
+}
+
+async function ensureHeartbeatFile() {
+  await fs.ensureDir(DATA_DIR)
+  if (!(await fs.pathExists(HEARTBEAT_FILE))) {
+    await fs.writeJson(
+      HEARTBEAT_FILE,
+      {
+        agents: {},
         updatedAt: new Date().toISOString()
       },
       { spaces: 2 }
@@ -110,6 +141,170 @@ async function loadData() {
     console.error('[admin] Failed to read data file:', error)
     return { shops: [] }
   }
+}
+
+async function loadHeartbeatData() {
+  try {
+    const { data } = await axios.get(`${PRINT_SERVER_URL}/api/agent/states`, { timeout: 5000 })
+    const map = {}
+    if (Array.isArray(data?.agents)) {
+      data.agents.forEach((agent) => {
+        if (agent?.shopId) {
+          const lastSeen = agent.lastHeartbeatAt || agent.lastSeenAt || agent.timestamp || new Date().toISOString()
+          agent.lastSeenAt = lastSeen
+          agent.devicesCount = Array.isArray(agent.devices) ? agent.devices.length : Array.isArray(agent.printers) ? agent.printers.length : 0
+          if (typeof agent.tcpPrinterCount !== 'number') {
+            const printers = Array.isArray(agent.devices) ? agent.devices : Array.isArray(agent.printers) ? agent.printers : []
+            agent.tcpPrinterCount = printers.filter((printer) => printer?.connectionType === 'tcp').length
+          }
+          map[agent.shopId] = agent
+        }
+      })
+    }
+    const payload = {
+      agents: map,
+      updatedAt: new Date().toISOString()
+    }
+    await saveHeartbeatData(payload)
+    return payload
+  } catch (error) {
+    console.error('[admin] Failed to fetch heartbeat states:', error.message)
+    const cached = await loadHeartbeatCache()
+    return { ...cached, cached: true, error: '无法获取最新心跳数据' }
+  }
+}
+
+async function saveHeartbeatData(data) {
+  await ensureHeartbeatFile()
+  const payload = {
+    agents: data.agents || {},
+    updatedAt: data.updatedAt || new Date().toISOString()
+  }
+  await fs.writeJson(HEARTBEAT_FILE, payload, { spaces: 2 })
+  return payload
+}
+
+async function loadHeartbeatCache() {
+  await ensureHeartbeatFile()
+  try {
+    const raw = await fs.readJson(HEARTBEAT_FILE)
+    if (raw && typeof raw === 'object') {
+      return {
+        agents: raw.agents || {},
+        updatedAt: raw.updatedAt || null
+      }
+    }
+  } catch (error) {
+    // ignore
+  }
+  return { agents: {}, updatedAt: null }
+}
+
+function normaliseLogs(logs) {
+  if (!logs) return []
+  if (Array.isArray(logs?.recent)) {
+    return logs.recent.filter((line) => typeof line === 'string').slice(-100)
+  }
+  if (Array.isArray(logs)) {
+    return logs.filter((line) => typeof line === 'string').slice(-100)
+  }
+  if (typeof logs === 'string') {
+    return logs.split('\n').slice(-100)
+  }
+  return []
+}
+
+function normaliseHeartbeatPayload(payload, req) {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+  const nowIso = new Date().toISOString()
+  const shopId = String(payload.shopId || '').trim()
+  if (!shopId) {
+    return null
+  }
+  const system = payload.system && typeof payload.system === 'object' ? payload.system : {}
+  const devices = Array.isArray(payload.devices) ? payload.devices.slice(0, 30) : []
+  const printers = Array.isArray(payload.printers) ? payload.printers : []
+  const preferences = payload.preferences && typeof payload.preferences === 'object' ? payload.preferences : {}
+  const server = payload.server && typeof payload.server === 'object' ? payload.server : {}
+  const update = payload.update && typeof payload.update === 'object' ? payload.update : {}
+  const telemetry = payload.telemetry && typeof payload.telemetry === 'object' ? payload.telemetry : {}
+  const remoteAddressHeader = req?.headers?.['x-forwarded-for']
+  const remoteAddress = Array.isArray(remoteAddressHeader)
+    ? remoteAddressHeader[0]
+    : typeof remoteAddressHeader === 'string'
+      ? remoteAddressHeader.split(',')[0].trim()
+      : req?.ip
+
+  return {
+    shopId,
+    companyId: payload.companyId || '',
+    version: payload.agentVersion || payload.version || null,
+    platform: payload.platform || system.platform || null,
+    arch: payload.arch || system.arch || null,
+    system: {
+      ...system,
+      hostname: system.hostname || payload.hostname || null
+    },
+    preferences: {
+      autoLaunch: !!preferences.autoLaunch,
+      allowSelfSigned: !!preferences.allowSelfSigned
+    },
+    server: {
+      port: Number(server.port) || 40713,
+      running: !!server.running
+    },
+    update,
+    telemetry: {
+      endpoint: telemetry.endpoint || null,
+      intervalSeconds: telemetry.intervalSeconds || null,
+      includeLogs: telemetry.includeLogs !== false
+    },
+    devices,
+    printers,
+    logs: normaliseLogs(payload.logs),
+    timestamp: payload.timestamp || nowIso,
+    lastSeenAt: nowIso,
+    lastError: payload.lastError || null,
+    message: payload.message || null,
+    consecutiveFailures: payload.consecutiveFailures || 0,
+    remoteAddress: remoteAddress || null
+  }
+}
+
+function formatPrinterLabel(printer) {
+  if (!printer) return '未知打印机';
+  if (printer.connectionType === 'tcp') {
+    const host = printer.ip || printer.host || '未知地址';
+    const port = printer.port || 9100;
+    return `${host}:${port} (TCP)`;
+  }
+  const vendor = typeof printer.vendorId === 'number' ? `0x${printer.vendorId.toString(16)}` : '未知';
+  const product = typeof printer.productId === 'number' ? `0x${printer.productId.toString(16)}` : '未知';
+  return `VID ${vendor} · PID ${product} (USB)`;
+}
+
+function buildTestTicket(shopId, printer, mapping) {
+  const now = new Date().toLocaleString()
+  const printerLabel = formatPrinterLabel(printer)
+  const lines = [
+    '\x1B@', // initialize
+    '\x1B!\x30',
+    'LOCAL USB AGENT\n',
+    '\x1B!\x00',
+    '远程测试打印\n',
+    '------------------------------\n',
+    `分店: ${shopId}\n`,
+    `打印机: ${printerLabel}\n`,
+    mapping?.alias ? `别名: ${mapping.alias}\n` : '',
+    mapping?.role ? `用途: ${mapping.role}\n` : '',
+    `时间: ${now}\n`,
+    '------------------------------\n',
+    '如成功出纸表示远程联调正常。\n\n',
+    '\x1DVA\x00'
+  ]
+  return lines.join('')
 }
 
 /**
@@ -381,6 +576,163 @@ app.get('/api/agents', async (req, res) => {
       error: error.message,
       agents: []
     })
+  }
+})
+
+app.post('/api/agent-heartbeat', async (req, res) => {
+  try {
+    const rawShopId = req.body?.shopId
+    const shopId = rawShopId == null ? '' : String(rawShopId).trim()
+    if (!shopId) {
+      return res.status(400).json({ success: false, error: 'shopId 不能为空' })
+    }
+
+    const heartbeat = normaliseHeartbeatPayload({ ...req.body, shopId }, req)
+    if (!heartbeat) {
+      return res.status(400).json({ success: false, error: '心跳数据格式无效' })
+    }
+
+    const data = await loadHeartbeatCache()
+    data.agents = data.agents || {}
+    const previous = data.agents[shopId] || {}
+    data.agents[shopId] = {
+      ...previous,
+      ...heartbeat,
+      lastSeenAt: heartbeat.lastSeenAt,
+      timestamp: heartbeat.timestamp || heartbeat.lastSeenAt
+    }
+    data.updatedAt = heartbeat.lastSeenAt
+    await saveHeartbeatData(data)
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[admin] Failed to accept heartbeat:', error)
+    res.status(500).json({ success: false, error: '无法保存心跳数据' })
+  }
+})
+
+app.get('/api/agent-heartbeat', async (req, res) => {
+  try {
+    const data = await loadHeartbeatData()
+    const now = Date.now()
+    const agents = Object.values(data.agents || {}).map((entry) => {
+      const lastSeen = entry.lastSeenAt ? Date.parse(entry.lastSeenAt) : NaN
+      const online = Number.isFinite(lastSeen) ? now - lastSeen <= HEARTBEAT_OFFLINE_THRESHOLD_MS : false
+      return {
+        ...entry,
+        devicesCount: Array.isArray(entry.devices) ? entry.devices.length : 0,
+        online,
+        lastSeenAgoMs: Number.isFinite(lastSeen) ? now - lastSeen : null
+      }
+    })
+
+    agents.sort((a, b) => {
+      const aTime = a.lastSeenAt || ''
+      const bTime = b.lastSeenAt || ''
+      return bTime.localeCompare(aTime)
+    })
+
+    const onlineCount = agents.filter((agent) => agent.online).length
+
+    res.json({
+      success: true,
+      total: agents.length,
+      online: onlineCount,
+      offline: agents.length - onlineCount,
+      thresholdMs: HEARTBEAT_OFFLINE_THRESHOLD_MS,
+      updatedAt: data.updatedAt,
+      agents
+    })
+  } catch (error) {
+    console.error('[admin] Failed to load heartbeats:', error)
+    res.status(500).json({ success: false, error: '无法获取心跳数据', agents: [] })
+  }
+})
+
+app.get('/api/agent-heartbeat/:shopId', async (req, res) => {
+  try {
+    const shopId = String(req.params.shopId || '').trim()
+    if (!shopId) {
+      return res.status(400).json({ success: false, error: 'shopId 不能为空' })
+    }
+    const data = await loadHeartbeatData()
+    const entry = data.agents?.[shopId]
+    if (!entry) {
+      return res.status(404).json({ success: false, error: '未找到心跳信息' })
+    }
+    res.json({ success: true, agent: entry })
+  } catch (error) {
+    console.error('[admin] Failed to load heartbeat detail:', error)
+    res.status(500).json({ success: false, error: '无法获取心跳详情' })
+  }
+})
+
+app.post('/api/agent-heartbeat/:shopId/test-default', async (req, res) => {
+  try {
+    const shopId = String(req.params.shopId || '').trim()
+    if (!shopId) {
+      return res.status(400).json({ success: false, error: 'shopId 不能为空' })
+    }
+
+    const data = await loadHeartbeatData()
+    const agent = data.agents?.[shopId]
+    if (!agent) {
+      return res.status(404).json({ success: false, error: '未找到心跳信息或代理离线' })
+    }
+
+    const printers = Array.isArray(agent.printers) ? agent.printers : []
+    const defaultPrinter = printers.find((printer) => printer && printer.isDefault)
+    if (!defaultPrinter) {
+      return res.status(400).json({ success: false, error: '尚未设置默认打印机' })
+    }
+
+    const mapping = printers.find((printer) => printer && printer.isDefault) || defaultPrinter
+    const connectionType =
+      defaultPrinter.connectionType ||
+      (defaultPrinter.ip || defaultPrinter.host ? 'tcp' : 'usb')
+    const payload = buildTestTicket(shopId, { ...defaultPrinter, connectionType }, mapping)
+    const printerPayload = {
+      connectionType,
+      alias: mapping?.alias || '',
+      role: mapping?.role || '',
+      port: defaultPrinter.port || 9100
+    }
+
+    if (connectionType === 'tcp') {
+      const host = defaultPrinter.ip || defaultPrinter.host
+      if (!host) {
+        return res.status(400).json({ success: false, error: '默认 TCP 打印机缺少 IP 地址' })
+      }
+      printerPayload.ip = host
+    } else {
+      if (typeof defaultPrinter.vendorId !== 'number' || typeof defaultPrinter.productId !== 'number') {
+        return res.status(400).json({ success: false, error: '默认 USB 打印机缺少 VID/PID' })
+      }
+      printerPayload.vendorId = defaultPrinter.vendorId
+      printerPayload.productId = defaultPrinter.productId
+    }
+
+    const response = await axios.post(
+      `${PRINT_SERVER_URL}/api/agent/tasks`,
+      {
+        shopId,
+        type: 'print-test',
+        payload: {
+          printer: printerPayload,
+          data: Buffer.from(payload, 'utf8').toString('base64'),
+          encoding: 'base64',
+          reason: 'remote-test'
+        }
+      },
+      {
+        timeout: 10000
+      }
+    )
+
+    res.json({ success: true, message: '测试打印任务已发送', task: response.data?.task || null })
+  } catch (error) {
+    console.error('[admin] Failed to trigger remote test:', error.message)
+    res.status(500).json({ success: false, error: error?.response?.data?.error || error.message || '远程测试失败' })
   }
 })
 

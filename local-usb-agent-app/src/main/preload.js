@@ -1,0 +1,28 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('agent', {
+  getStatus: () => ipcRenderer.invoke('agent:get-status'),
+  saveConfig: (payload) => ipcRenderer.invoke('agent:save-config', payload),
+  refreshDevices: () => ipcRenderer.invoke('agent:refresh-devices'),
+  setAutostart: (enabled) => ipcRenderer.invoke('agent:set-autostart', enabled),
+  getLogs: () => ipcRenderer.invoke('agent:get-logs'),
+  getVersion: () => ipcRenderer.invoke('agent:get-version'),
+  checkUpdates: () => ipcRenderer.invoke('agent:updates-check'),
+  installUpdate: () => ipcRenderer.invoke('agent:updates-install'),
+  onDevicesUpdated: (listener) => ipcRenderer.on('agent:devices-updated', listener),
+  onUpdateStatus: (listener) => ipcRenderer.on('agent:update-status', (_event, payload) => listener(payload)),
+  sendTelemetry: () => ipcRenderer.invoke('agent:telemetry-send'),
+  onTelemetryStatus: (listener) => ipcRenderer.on('agent:telemetry-status', (_event, payload) => listener(payload)),
+  getPrinterMappings: () => ipcRenderer.invoke('agent:get-printer-mappings'),
+  updatePrinterMapping: (payload) => ipcRenderer.invoke('agent:update-printer-mapping', payload),
+  removePrinterMapping: (payload) => ipcRenderer.invoke('agent:remove-printer-mapping', payload),
+  getPrintHistory: () => ipcRenderer.invoke('agent:get-print-history'),
+  clearPrintHistory: () => ipcRenderer.invoke('agent:clear-print-history'),
+  testPrinter: (payload) => ipcRenderer.invoke('agent:test-printer', payload),
+  testUsbDevice: (payload) => ipcRenderer.invoke('agent:test-usb-device', payload),
+  onPrinterMappingsUpdated: (listener) => ipcRenderer.on('agent:printer-mappings-updated', (_event, payload) => listener(payload)),
+  onPrintHistoryUpdated: (listener) => ipcRenderer.on('agent:print-history-updated', (_event, payload) => listener(payload)),
+  getOnboarding: () => ipcRenderer.invoke('agent:get-onboarding'),
+  updateOnboarding: (payload) => ipcRenderer.invoke('agent:update-onboarding', payload),
+  onOnboardingUpdated: (listener) => ipcRenderer.on('agent:onboarding-updated', (_event, payload) => listener(payload))
+});

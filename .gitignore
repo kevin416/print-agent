@@ -7,3 +7,12 @@ logs/
 *.key
 config.json
 
+# Build artifacts
+local-usb-agent-app/build/
+local-usb-agent-app/dist/
+updates/
+
+# OS / editor clutter
+.idea/
+.vscode/
+
