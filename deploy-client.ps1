@@ -1,5 +1,22 @@
 # Yepos Agent 客户端打包并上传脚本 (Windows PowerShell)
 # 一键完成：打包应用 -> 整理构建产物 -> 上传到服务器
+# 
+# 注意：如果遇到中文编码问题，建议使用 Git Bash 运行 deploy-client.sh
+# 或使用 PowerShell Core 7+ (pwsh) 代替 Windows PowerShell
+
+# 设置控制台编码为 UTF-8
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+        # Windows PowerShell 5.1 及以下版本
+        chcp 65001 | Out-Null
+    }
+} catch {
+    # 如果编码设置失败，继续执行（可能在某些环境中不支持）
+    Write-Warning "无法设置 UTF-8 编码，可能会显示乱码。建议使用 Git Bash 或 PowerShell Core 7+"
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -42,9 +59,13 @@ $patchVersion = [int]$versionParts[2] + 1
 $minorVersion = [int]$versionParts[1] + 1
 $majorVersion = [int]$versionParts[0] + 1
 
-Write-Host "  1) 自动递增补丁版本 ($CURRENT_VERSION -> $($versionParts[0]).$($versionParts[1]).$patchVersion)"
-Write-Host "  2) 自动递增次版本 ($CURRENT_VERSION -> $($versionParts[0]).$minorVersion.0)"
-Write-Host "  3) 自动递增主版本 ($CURRENT_VERSION -> $majorVersion.0.0)"
+$newPatchVersion = "$($versionParts[0]).$($versionParts[1]).$patchVersion"
+$newMinorVersion = "$($versionParts[0]).$minorVersion.0"
+$newMajorVersion = "$majorVersion.0.0"
+
+Write-Host "  1) 自动递增补丁版本 ($CURRENT_VERSION -> $newPatchVersion)"
+Write-Host "  2) 自动递增次版本 ($CURRENT_VERSION -> $newMinorVersion)"
+Write-Host "  3) 自动递增主版本 ($CURRENT_VERSION -> $newMajorVersion)"
 Write-Host "  4) 手动输入新版本号"
 Write-Host "  5) 保持当前版本号"
 Write-Host ""
@@ -216,38 +237,50 @@ if (Test-Path $buildDir) {
 
 # 复制 macOS 构建产物（如果有）
 Write-Host "复制 macOS 构建产物..."
-$macDmgFiles = Get-ChildItem "local-usb-agent-app\build\*.dmg" -ErrorAction SilentlyContinue
-if ($macDmgFiles) {
-    Copy-Item $macDmgFiles.FullName -Destination "updates\local-usb-agent\mac\" -Force
-    Write-Host "  ✓ DMG 文件已复制"
-}
-$macZipFiles = Get-ChildItem "local-usb-agent-app\build\*-mac.zip" -ErrorAction SilentlyContinue
-if ($macZipFiles) {
-    Copy-Item $macZipFiles.FullName -Destination "updates\local-usb-agent\mac\" -Force
-    Write-Host "  ✓ ZIP 文件已复制"
-}
-$latestMacYml = Get-Item "local-usb-agent-app\build\latest-mac.yml" -ErrorAction SilentlyContinue
-if ($latestMacYml) {
-    Copy-Item $latestMacYml.FullName -Destination "updates\local-usb-agent\stable\stable-mac.yml" -Force
-    Write-Host "  ✓ YAML 文件已复制 (stable-mac.yml)"
+if (Test-Path $buildDir) {
+    $macDmgFiles = Get-ChildItem "$buildDir\*.dmg" -ErrorAction SilentlyContinue
+    if ($macDmgFiles) {
+        foreach ($file in $macDmgFiles) {
+            Copy-Item $file.FullName -Destination "updates\local-usb-agent\mac\" -Force
+            Write-Host "  ✓ DMG 文件已复制: $($file.Name)"
+        }
+    }
+    $macZipFiles = Get-ChildItem "$buildDir\*-mac.zip" -ErrorAction SilentlyContinue
+    if ($macZipFiles) {
+        foreach ($file in $macZipFiles) {
+            Copy-Item $file.FullName -Destination "updates\local-usb-agent\mac\" -Force
+            Write-Host "  ✓ ZIP 文件已复制: $($file.Name)"
+        }
+    }
+    $latestMacYml = Get-Item "$buildDir\latest-mac.yml" -ErrorAction SilentlyContinue
+    if ($latestMacYml) {
+        Copy-Item $latestMacYml.FullName -Destination "updates\local-usb-agent\stable\stable-mac.yml" -Force
+        Write-Host "  ✓ YAML 文件已复制 (stable-mac.yml)"
+    }
 }
 
 # 复制 Linux 构建产物（如果有）
 Write-Host "复制 Linux 构建产物..."
-$linuxAppImageFiles = Get-ChildItem "local-usb-agent-app\build\*.AppImage" -ErrorAction SilentlyContinue
-if ($linuxAppImageFiles) {
-    Copy-Item $linuxAppImageFiles.FullName -Destination "updates\local-usb-agent\linux\" -Force
-    Write-Host "  ✓ AppImage 文件已复制"
-}
-$linuxDebFiles = Get-ChildItem "local-usb-agent-app\build\*.deb" -ErrorAction SilentlyContinue
-if ($linuxDebFiles) {
-    Copy-Item $linuxDebFiles.FullName -Destination "updates\local-usb-agent\linux\" -Force
-    Write-Host "  ✓ DEB 文件已复制"
-}
-$latestLinuxYml = Get-Item "local-usb-agent-app\build\latest-linux.yml" -ErrorAction SilentlyContinue
-if ($latestLinuxYml) {
-    Copy-Item $latestLinuxYml.FullName -Destination "updates\local-usb-agent\stable\stable-linux.yml" -Force
-    Write-Host "  ✓ YAML 文件已复制 (stable-linux.yml)"
+if (Test-Path $buildDir) {
+    $linuxAppImageFiles = Get-ChildItem "$buildDir\*.AppImage" -ErrorAction SilentlyContinue
+    if ($linuxAppImageFiles) {
+        foreach ($file in $linuxAppImageFiles) {
+            Copy-Item $file.FullName -Destination "updates\local-usb-agent\linux\" -Force
+            Write-Host "  ✓ AppImage 文件已复制: $($file.Name)"
+        }
+    }
+    $linuxDebFiles = Get-ChildItem "$buildDir\*.deb" -ErrorAction SilentlyContinue
+    if ($linuxDebFiles) {
+        foreach ($file in $linuxDebFiles) {
+            Copy-Item $file.FullName -Destination "updates\local-usb-agent\linux\" -Force
+            Write-Host "  ✓ DEB 文件已复制: $($file.Name)"
+        }
+    }
+    $latestLinuxYml = Get-Item "$buildDir\latest-linux.yml" -ErrorAction SilentlyContinue
+    if ($latestLinuxYml) {
+        Copy-Item $latestLinuxYml.FullName -Destination "updates\local-usb-agent\stable\stable-linux.yml" -Force
+        Write-Host "  ✓ YAML 文件已复制 (stable-linux.yml)"
+    }
 }
 
 Write-Host ""

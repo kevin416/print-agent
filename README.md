@@ -130,12 +130,21 @@ curl http://127.0.0.1:3000/api/print/health | jq .
 
 **Windows:**
 ```powershell
-# PowerShell 脚本
+# PowerShell 脚本（推荐使用 PowerShell Core 7+ 或 Windows Terminal）
 .\deploy-client.ps1
 
-# 或使用 Git Bash / WSL
+# 如果遇到中文编码问题，使用 Git Bash / WSL
 bash deploy-client.sh
+
+# 或使用 PowerShell Core 7+（更推荐）
+pwsh deploy-client.ps1
 ```
+
+> **Windows 编码问题**：如果 PowerShell 脚本出现中文乱码或解析错误，请：
+> - 使用 **Git Bash** 运行 `bash deploy-client.sh`
+> - 使用 **WSL** 运行 `wsl bash deploy-client.sh`
+> - 使用 **PowerShell Core 7+**（`pwsh`）代替 Windows PowerShell
+> - 在 Windows Terminal 中运行（通常编码处理更好）
 
 #### 手动打包
 
