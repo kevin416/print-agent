@@ -194,7 +194,8 @@ function getDevices() {
 }
 
 function findDevice(match) {
-  return usb.getDeviceList().find((device) => {
+  const allDevices = usb.getDeviceList();
+  const matchingDevices = allDevices.filter((device) => {
     const descriptor = device.deviceDescriptor || {};
     if (match.vendorId && descriptor.idVendor !== match.vendorId) return false;
     if (match.productId && descriptor.idProduct !== match.productId) return false;
@@ -202,29 +203,197 @@ function findDevice(match) {
     if (match.deviceAddress && device.deviceAddress !== match.deviceAddress) return false;
     return true;
   });
+  
+  // 如果找到多个匹配的设备，记录警告
+  if (matchingDevices.length > 1) {
+    logger.warn('Multiple devices found with same VID/PID', {
+      vid: match.vendorId?.toString(16),
+      pid: match.productId?.toString(16),
+      count: matchingDevices.length,
+      devices: matchingDevices.map((d, i) => ({
+        index: i,
+        busNumber: d.busNumber,
+        deviceAddress: d.deviceAddress,
+        interfacesCount: d.interfaces?.length || 0
+      }))
+    });
+  }
+  
+  // 尝试找到可以打开的设备（WinUSB 驱动）
+  // 优先选择有接口的设备
+  for (const device of matchingDevices) {
+    try {
+      // 尝试打开设备以检查是否可用
+      const wasOpen = device.interfaces && device.interfaces.length > 0;
+      if (!wasOpen) {
+        device.open();
+      }
+      
+      // 检查是否有接口
+      if (device.interfaces && device.interfaces.length > 0) {
+        if (!wasOpen) {
+          device.close();
+        }
+        logger.debug('Selected USB device with interfaces', {
+          vid: match.vendorId?.toString(16),
+          pid: match.productId?.toString(16),
+          busNumber: device.busNumber,
+          deviceAddress: device.deviceAddress,
+          interfacesCount: device.interfaces.length
+        });
+        return device;
+      }
+      
+      if (!wasOpen) {
+        device.close();
+      }
+    } catch (err) {
+      // 如果无法打开，尝试下一个设备
+      logger.debug('Device cannot be opened, trying next', {
+        vid: match.vendorId?.toString(16),
+        pid: match.productId?.toString(16),
+        busNumber: device.busNumber,
+        deviceAddress: device.deviceAddress,
+        error: err?.message
+      });
+      continue;
+    }
+  }
+  
+  // 如果所有设备都无法打开，返回第一个匹配的设备
+  if (matchingDevices.length > 0) {
+    logger.warn('No accessible device found, returning first match', {
+      vid: match.vendorId?.toString(16),
+      pid: match.productId?.toString(16),
+      selectedDevice: {
+        busNumber: matchingDevices[0].busNumber,
+        deviceAddress: matchingDevices[0].deviceAddress
+      }
+    });
+    return matchingDevices[0];
+  }
+  
+  return null;
 }
 
 function openDevice(device) {
   if (!device) {
     throw new Error(t('print.deviceNotFound'));
   }
-  device.open();
+  
+  const vid = device.deviceDescriptor?.idVendor?.toString(16) || 'xxxx';
+  const pid = device.deviceDescriptor?.idProduct?.toString(16) || 'xxxx';
+  
+  try {
+    device.open();
+    logger.debug('USB device opened successfully', { vid, pid, busNumber: device.busNumber, deviceAddress: device.deviceAddress });
+  } catch (err) {
+    // 记录详细错误信息
+    const errorMessage = err?.message || String(err);
+    const errorCode = err?.errno || err?.code || 'UNKNOWN';
+    logger.error('USB device open failed', { 
+      vid, 
+      pid, 
+      error: errorMessage, 
+      code: errorCode,
+      busNumber: device.busNumber,
+      deviceAddress: device.deviceAddress,
+      stack: err?.stack
+    });
+    
+    // 检测 Windows 驱动错误
+    if (errorMessage.includes('LIBUSB_ERROR_NOT_SUPPORTED') || 
+        errorMessage.includes('not supported') ||
+        errorMessage.includes('NOT_SUPPORTED') ||
+        errorCode === 'LIBUSB_ERROR_NOT_SUPPORTED') {
+      const driverError = new Error(t('print.windowsDriverNotSupported', { vid, pid }));
+      driverError.code = 'LIBUSB_ERROR_NOT_SUPPORTED';
+      driverError.isDriverError = true;
+      driverError.originalError = errorMessage;
+      throw driverError;
+    }
+    throw err;
+  }
+  
   const iface = device.interfaces && device.interfaces[0];
   if (!iface) {
+    logger.error('No USB interface found', { vid, pid, interfacesCount: device.interfaces?.length || 0 });
     throw new Error(t('print.cannotReadPrinterInterface'));
   }
+  
+  logger.debug('USB interface found', { 
+    vid, 
+    pid, 
+    interfaceNumber: iface.descriptor?.bInterfaceNumber,
+    interfaceClass: iface.descriptor?.bInterfaceClass,
+    endpointsCount: iface.endpoints?.length || 0
+  });
+  
+  // 在 Windows 上，WinUSB 设备不需要 detach kernel driver
+  // 但某些情况下可能需要
   if (iface.isKernelDriverActive && iface.isKernelDriverActive()) {
     try {
+      logger.debug('Attempting to detach kernel driver', { vid, pid });
       iface.detachKernelDriver();
+      logger.debug('Kernel driver detached successfully', { vid, pid });
     } catch (err) {
-      logger.warn(t('print.cannotDetachKernelDriver'), err);
+      // 在 Windows 上，WinUSB 设备通常没有 kernel driver，这个错误可以忽略
+      logger.warn(t('print.cannotDetachKernelDriver'), { vid, pid, error: err?.message });
     }
   }
-  iface.claim();
+  
+  try {
+    iface.claim();
+    logger.debug('USB interface claimed successfully', { vid, pid });
+  } catch (err) {
+    // 记录详细错误信息
+    const errorMessage = err?.message || String(err);
+    const errorCode = err?.errno || err?.code || 'UNKNOWN';
+    logger.error('USB interface claim failed', { 
+      vid, 
+      pid, 
+      error: errorMessage, 
+      code: errorCode,
+      interfaceNumber: iface.descriptor?.bInterfaceNumber,
+      stack: err?.stack
+    });
+    
+    // 检测 Windows 驱动错误（claim 时也可能出现）
+    if (errorMessage.includes('LIBUSB_ERROR_NOT_SUPPORTED') || 
+        errorMessage.includes('not supported') ||
+        errorMessage.includes('NOT_SUPPORTED') ||
+        errorCode === 'LIBUSB_ERROR_NOT_SUPPORTED') {
+      const driverError = new Error(t('print.windowsDriverNotSupported', { vid, pid }));
+      driverError.code = 'LIBUSB_ERROR_NOT_SUPPORTED';
+      driverError.isDriverError = true;
+      driverError.originalError = errorMessage;
+      throw driverError;
+    }
+    throw err;
+  }
+  
   const endpoint = iface.endpoints.find((ep) => ep.direction === 'out');
   if (!endpoint) {
+    logger.error('No writable endpoint found', { 
+      vid, 
+      pid, 
+      endpoints: iface.endpoints?.map(ep => ({
+        direction: ep.direction,
+        address: ep.address,
+        type: ep.type
+      })) || []
+    });
     throw new Error(t('print.noWritableEndpoint'));
   }
+  
+  logger.debug('Writable endpoint found', { 
+    vid, 
+    pid, 
+    endpointAddress: endpoint.address,
+    endpointDirection: endpoint.direction,
+    endpointType: endpoint.type
+  });
+  
   return { iface, endpoint };
 }
 
@@ -241,14 +410,30 @@ async function writeBuffer(device, endpoint, buffer) {
 }
 
 async function print({ data, encoding = 'base64', vendorId, productId }) {
+  const vid = vendorId?.toString(16) || 'xxxx';
+  const pid = productId?.toString(16) || 'xxxx';
+  
+  logger.debug('Attempting to print', { vendorId, productId, vid, pid, dataSize: data?.length || 0 });
+  
   const device = findDevice({ vendorId, productId });
   if (!device) {
+    logger.error('USB device not found', { vendorId, productId, vid, pid });
     const error = new Error(t('print.usbPrinterNotFound'));
     error.code = 'USB_NOT_FOUND';
     error.vendorId = vendorId;
     error.productId = productId;
     throw error;
   }
+  
+  logger.debug('USB device found', { 
+    vendorId, 
+    productId, 
+    vid, 
+    pid, 
+    busNumber: device.busNumber,
+    deviceAddress: device.deviceAddress,
+    interfacesCount: device.interfaces?.length || 0
+  });
   const payload = Buffer.isBuffer(data)
     ? data
     : encoding === 'base64'
@@ -261,6 +446,26 @@ async function print({ data, encoding = 'base64', vendorId, productId }) {
     handle = { device, iface };
     await writeBuffer(device, endpoint, payload);
     logger.info('USB print success', { vendorId, productId, size: payload.length });
+  } catch (err) {
+    // 如果错误已经包含 isDriverError 标记，直接抛出
+    if (err.isDriverError) {
+      throw err;
+    }
+    // 检查错误消息中是否包含驱动相关错误
+    const errorMessage = err?.message || String(err);
+    if (errorMessage.includes('LIBUSB_ERROR_NOT_SUPPORTED') || 
+        errorMessage.includes('not supported') ||
+        errorMessage.includes('NOT_SUPPORTED')) {
+      const driverError = new Error(t('print.windowsDriverNotSupported', {
+        vid: vendorId?.toString(16) || 'xxxx',
+        pid: productId?.toString(16) || 'xxxx'
+      }));
+      driverError.code = 'LIBUSB_ERROR_NOT_SUPPORTED';
+      driverError.isDriverError = true;
+      throw driverError;
+    }
+    // 其他错误直接抛出
+    throw err;
   } finally {
     if (handle?.iface) {
       try {

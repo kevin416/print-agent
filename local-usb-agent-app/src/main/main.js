@@ -244,25 +244,32 @@ function updateTrayMenu() {
               alias: mapping.alias,
               role: mapping.role
             });
-            await usbManager.print({ data: buffer, encoding: 'buffer', vendorId, productId });
-            const trayTestMessage = i18n.t('print.testSuccess');
-            printerMappings.updateMapping(key, {
-              lastTest: {
+            try {
+              await usbManager.print({ data: buffer, encoding: 'buffer', vendorId, productId });
+              const trayTestMessage = i18n.t('print.testSuccess');
+              printerMappings.updateMapping(key, {
+                lastTest: {
+                  status: 'success',
+                  message: trayTestMessage,
+                  timestamp: new Date().toISOString()
+                }
+              });
+              printHistory.append({
+                type: 'tray-test',
+                connectionType: 'usb',
+                vendorId,
+                productId,
+                alias: mapping.alias,
+                role: mapping.role,
                 status: 'success',
-                message: trayTestMessage,
-                timestamp: new Date().toISOString()
-              }
-            });
-            printHistory.append({
-              type: 'tray-test',
-              connectionType: 'usb',
-              vendorId,
-              productId,
-              alias: mapping.alias,
-              role: mapping.role,
-              status: 'success',
-              message: trayTestMessage
-            });
+                message: trayTestMessage
+              });
+              emitPrinterMappings();
+              emitPrintHistory();
+            } catch (printError) {
+              // 抛出错误，让外层 catch 处理
+              throw printError;
+            }
           } else if (parsed.connectionType === 'tcp') {
             const buffer = buildTestPayload({
               connectionType: 'tcp',
@@ -312,11 +319,45 @@ function updateTrayMenu() {
           });
         } catch (error) {
           logger.error('Tray test default printer failed', error);
-          dialog.showMessageBox({
-            type: 'error',
-            title: i18n.t('dialogs.testError.title'),
-            message: i18n.t('dialogs.testError.message', { error: error?.message || i18n.t('dialogs.testError.message') })
-          });
+          const errorMessage = error?.message || String(error);
+          const isDriverError = error?.isDriverError || error?.code === 'LIBUSB_ERROR_NOT_SUPPORTED' || 
+                                (typeof errorMessage === 'string' && (
+                                  errorMessage.includes('LIBUSB_ERROR_NOT_SUPPORTED') ||
+                                  errorMessage.includes('not supported') ||
+                                  errorMessage.includes('NOT_SUPPORTED') ||
+                                  errorMessage.includes('Windows USB 驱动不支持')
+                                ));
+          
+          if (isDriverError) {
+            const driverHelpMessage = i18n ? i18n.t('print.windowsDriverHelpMessage', {
+              vid: parsed?.vendorId?.toString(16) || 'xxxx',
+              pid: parsed?.productId?.toString(16) || 'xxxx'
+            }) : `检测到 LIBUSB_ERROR_NOT_SUPPORTED 错误。该打印机需要使用 WinUSB/libusbK 驱动才能正常工作。\n\n解决步骤：\n1. 下载 Zadig 工具：https://zadig.akeo.ie/\n2. 以管理员身份运行 Zadig\n3. 菜单 Options 勾选 List All Devices\n4. 选择设备并切换驱动\n5. 重新插拔打印机并重试\n\n详细步骤请查看 README.md 中的 Windows USB 驱动提示章节。`;
+            
+            dialog.showMessageBox({
+              type: 'warning',
+              title: i18n ? i18n.t('print.windowsDriverHelpTitle') : 'Windows USB 驱动问题',
+              message: driverHelpMessage,
+              buttons: ['确定', '查看帮助'],
+              defaultId: 0,
+              cancelId: 0
+            }).then((result) => {
+              if (result.response === 1) {
+                // 用户点击了"查看帮助"，打开 README 或显示更详细的帮助
+                dialog.showMessageBox({
+                  type: 'info',
+                  title: i18n ? i18n.t('print.windowsDriverHelpTitle') : 'Windows USB 驱动问题',
+                  message: driverHelpMessage + '\n\n更多信息请查看应用 README.md 文件。'
+                });
+              }
+            });
+          } else {
+            dialog.showMessageBox({
+              type: 'error',
+              title: i18n.t('dialogs.testError.title'),
+              message: i18n.t('dialogs.testError.message', { error: errorMessage })
+            });
+          }
         }
       }
     },
@@ -852,6 +893,14 @@ async function performTestPrint(payload = {}) {
   } catch (error) {
     const failMessage = i18n ? i18n.t('print.testFailed') : '测试打印失败';
     const message = error?.message || failMessage;
+    const isDriverError = error?.isDriverError || error?.code === 'LIBUSB_ERROR_NOT_SUPPORTED' || 
+                          (typeof message === 'string' && (
+                            message.includes('LIBUSB_ERROR_NOT_SUPPORTED') ||
+                            message.includes('not supported') ||
+                            message.includes('NOT_SUPPORTED') ||
+                            message.includes('Windows USB 驱动不支持')
+                          ));
+    
     printerMappings.updateMapping(key, {
       alias,
       role,
@@ -859,7 +908,8 @@ async function performTestPrint(payload = {}) {
       lastTest: {
         status: 'error',
         message,
-        timestamp
+        timestamp,
+        isDriverError
       }
     });
     printHistory.append({
@@ -870,11 +920,23 @@ async function performTestPrint(payload = {}) {
       alias,
       role,
       status: 'error',
-      message
+      message,
+      isDriverError
     });
     emitPrinterMappings();
     emitPrintHistory();
-    return { ok: false, error: message };
+    return { 
+      ok: false, 
+      error: message,
+      isDriverError,
+      driverHelp: isDriverError ? {
+        title: i18n ? i18n.t('print.windowsDriverHelpTitle') : 'Windows USB 驱动问题',
+        message: i18n ? i18n.t('print.windowsDriverHelpMessage', {
+          vid: vendorId?.toString(16) || 'xxxx',
+          pid: productId?.toString(16) || 'xxxx'
+        }) : `检测到 LIBUSB_ERROR_NOT_SUPPORTED 错误。该打印机需要使用 WinUSB/libusbK 驱动才能正常工作。\n\n解决步骤：\n1. 下载 Zadig 工具：https://zadig.akeo.ie/\n2. 以管理员身份运行 Zadig\n3. 菜单 Options 勾选 List All Devices\n4. 选择设备 VID_${vendorId?.toString(16) || 'xxxx'} & PID_${productId?.toString(16) || 'xxxx'}\n5. 右侧选择 WinUSB (v6.x) 或 libusbK\n6. 点击 Replace Driver\n7. 重新插拔打印机并重试\n\n注意：切换驱动后，该打印机将不再走 Windows 默认打印队列。`
+      } : null
+    };
   }
 }
 

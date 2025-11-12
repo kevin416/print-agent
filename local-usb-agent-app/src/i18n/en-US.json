@@ -314,7 +314,10 @@
     "closeUsbDeviceFailed": "Failed to close USB device",
     "releaseInterfaceFailed": "Failed to release interface",
     "closeDeviceFailed": "Failed to close device",
-    "cannotDetachKernelDriver": "Cannot detach kernel driver"
+    "cannotDetachKernelDriver": "Cannot detach kernel driver",
+    "windowsDriverNotSupported": "Windows USB driver not supported (VID_{vid} & PID_{pid}). This printer is still managed by the system's built-in driver (usbprint.sys). Please use Zadig tool to switch the driver to WinUSB/libusbK. See README.md Windows USB Driver section for detailed steps.",
+    "windowsDriverHelpTitle": "Windows USB Driver Issue",
+    "windowsDriverHelpMessage": "LIBUSB_ERROR_NOT_SUPPORTED error detected. This printer requires WinUSB/libusbK driver to work properly.\n\nSolution steps:\n1. Download Zadig tool: https://zadig.akeo.ie/\n2. Run Zadig as administrator\n3. Menu Options, check List All Devices\n4. Select device VID_{vid} & PID_{pid}\n5. Select WinUSB (v6.x) or libusbK on the right\n6. Click Replace Driver\n7. Reconnect printer and retry\n\nNote: After switching drivers, this printer will no longer use Windows default print queue."
   },
   "server": {
     "missingPrintContent": "Missing print content",

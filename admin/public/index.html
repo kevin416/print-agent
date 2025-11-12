@@ -499,10 +499,122 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .login-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .login-box {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .login-box h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .login-box p {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-form input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .login-form input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-form button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .login-form button:hover {
+            background: #5568d3;
+        }
+
+        .login-form button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .login-error {
+            color: #ef4444;
+            font-size: 14px;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .logout-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 100;
+            transition: background 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: #dc2626;
+        }
+
+        .hidden {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-container">
+        <div class="login-box">
+            <h1>打印代理管理后台</h1>
+            <p>请登录以继续</p>
+            <form id="loginForm" class="login-form">
+                <input type="text" id="username" placeholder="用户名" required autocomplete="username">
+                <input type="password" id="password" placeholder="密码" required autocomplete="current-password">
+                <button type="submit" id="loginBtn">登录</button>
+                <div id="loginError" class="login-error"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="hidden">
+        <button class="logout-btn" onclick="handleLogout()">登出</button>
+        <div class="container">
         <div class="header">
             <h1>打印代理管理后台</h1>
             <p>统一管理各分店本地打印代理，查看连接状态、心跳信息，并进行远程配置。</p>
@@ -770,6 +882,122 @@ ID服务器: 90.195.120.165:21116
         let notes = [];
         let isEditingNote = false;
         let editingNoteId = null;
+        let isAuthenticated = false;
+
+        // Check authentication status on page load
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth/check', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (data.success && data.authenticated) {
+                    isAuthenticated = true;
+                    showMainApp();
+                } else {
+                    showLoginScreen();
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                showLoginScreen();
+            }
+        }
+
+        function showLoginScreen() {
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('mainApp').classList.add('hidden');
+        }
+
+        function showMainApp() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            // Start data refresh after showing main app
+            startDataRefresh();
+        }
+
+        // Login form handler
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const loginBtn = document.getElementById('loginBtn');
+            const errorDiv = document.getElementById('loginError');
+
+            if (!username || !password) {
+                errorDiv.textContent = '请输入用户名和密码';
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = '登录中...';
+            errorDiv.textContent = '';
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    isAuthenticated = true;
+                    showMainApp();
+                } else {
+                    errorDiv.textContent = data.error || '登录失败';
+                }
+            } catch (error) {
+                errorDiv.textContent = '登录失败: ' + error.message;
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = '登录';
+            }
+        });
+
+        // Logout handler
+        async function handleLogout() {
+            if (!confirm('确定要登出吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    isAuthenticated = false;
+                    showLoginScreen();
+                    // Clear form
+                    document.getElementById('loginForm').reset();
+                    document.getElementById('loginError').textContent = '';
+                } else {
+                    showToast('登出失败: ' + (data.error || '未知错误'), 'error');
+                }
+            } catch (error) {
+                showToast('登出失败: ' + error.message, 'error');
+            }
+        }
+
+        // Wrap API calls to handle 401 errors
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            const response = await originalFetch(...args);
+            if (response.status === 401 && isAuthenticated) {
+                // Session expired, redirect to login
+                isAuthenticated = false;
+                showLoginScreen();
+                showToast('登录已过期，请重新登录', 'error');
+            }
+            return response;
+        };
+
+        // Initialize
+        checkAuth();
 
         const normalizePrinterType = (type) => {
             if (!type) return 'Kitchen';
@@ -869,7 +1097,9 @@ ID服务器: 90.195.120.165:21116
         // 加载客户端下载链接
         async function loadDownloadLinks() {
             try {
-                const response = await fetch('/api/client-downloads');
+                const response = await fetch('/api/client-downloads', {
+                    credentials: 'include'
+                });
                 const data = await response.json();
                 const container = document.getElementById('download-links-container');
                 
@@ -925,10 +1155,10 @@ ID服务器: 90.195.120.165:21116
         async function loadData() {
             try {
                 const [shopsRes, agentsRes, heartbeatRes, notesRes] = await Promise.all([
-                    fetch('/api/shops'),
-                    fetch('/api/agents'),
-                    fetch('/api/agent-heartbeat'),
-                    fetch('/api/notes')
+                    fetch('/api/shops', { credentials: 'include' }),
+                    fetch('/api/agents', { credentials: 'include' }),
+                    fetch('/api/agent-heartbeat', { credentials: 'include' }),
+                    fetch('/api/notes', { credentials: 'include' })
                 ]);
 
                 const shopsData = await shopsRes.json();
@@ -1129,7 +1359,8 @@ ID服务器: 90.195.120.165:21116
             try {
                 const response = await fetch(`/api/agent-heartbeat/${encodeURIComponent(shopId)}/test-default`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
                 });
                 const result = await response.json();
                 if (result.success) {
@@ -1389,6 +1620,7 @@ ID服务器: 90.195.120.165:21116
             fetch('/api/agent/tasks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     shopId: remoteConfigAgent.shopId,
                     type: 'config',
@@ -1553,6 +1785,7 @@ ID服务器: 90.195.120.165:21116
                 const response = await fetch(url, {
                     method,
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify(payload)
                 });
 
@@ -1663,6 +1896,7 @@ ID服务器: 90.195.120.165:21116
                     const response = await fetch(`/api/shops/${currentShopId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({ printers })
                     });
 
@@ -1678,6 +1912,7 @@ ID服务器: 90.195.120.165:21116
                     const response = await fetch(`/api/shops/${currentShopId}/printers`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({ ip, port, name, type })
                     });
 
@@ -1706,7 +1941,8 @@ ID服务器: 90.195.120.165:21116
 
             try {
                 const response = await fetch(`/api/shops/${shopId}/printers/${ip}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -1736,6 +1972,7 @@ ID服务器: 90.195.120.165:21116
                 const response = await fetch(`/api/shops/${shopId}/printers/${ip}/test`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ port })
                 });
 
@@ -1764,7 +2001,9 @@ ID服务器: 90.195.120.165:21116
             delete macEl.dataset.command;
 
             try {
-                const response = await fetch(`/api/shops/${shopId}/deploy`);
+                const response = await fetch(`/api/shops/${shopId}/deploy`, {
+                    credentials: 'include'
+                });
                 const data = await response.json();
                 if (data.success) {
                     const wslCommand = data.linuxCommand || data.curlCommand || data.commands?.default;
@@ -2064,6 +2303,7 @@ ID服务器: 90.195.120.165:21116
                     const response = await fetch(`/api/notes/${editingNoteId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({ title, content })
                     });
 
@@ -2080,6 +2320,7 @@ ID服务器: 90.195.120.165:21116
                     const response = await fetch('/api/notes', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({ title, content })
                     });
 
@@ -2110,7 +2351,8 @@ ID服务器: 90.195.120.165:21116
 
             try {
                 const response = await fetch(`/api/notes/${noteId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -2125,12 +2367,27 @@ ID服务器: 90.195.120.165:21116
             }
         }
 
-        // 定期刷新数据
-        loadDownloadLinks();
-        loadData();
-        setInterval(loadData, 5000);
-        // 下载链接每30秒刷新一次（因为更新频率较低）
-        setInterval(loadDownloadLinks, 30000);
+        // 定期刷新数据（仅在已登录时）
+        function startDataRefresh() {
+            if (!isAuthenticated) return;
+            
+            loadDownloadLinks();
+            loadData();
+            setInterval(() => {
+                if (isAuthenticated) {
+                    loadData();
+                }
+            }, 5000);
+            // 下载链接每30秒刷新一次（因为更新频率较低）
+            setInterval(() => {
+                if (isAuthenticated) {
+                    loadDownloadLinks();
+                }
+            }, 30000);
+        }
+
+        // Initialize on page load
+        checkAuth();
     </script>
 </body>
 </html>

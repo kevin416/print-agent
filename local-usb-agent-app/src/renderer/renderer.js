@@ -683,10 +683,26 @@ function renderDevices() {
           <div class="muted">${t('devices.testPrint')} ${t('devices.success')}</div>
         `;
       } else {
-        statusCell.innerHTML = `
-          <div class="history-status-error">${t('devices.failed')}</div>
-          <div class="muted">${result?.error || t('devices.failed')}</div>
-        `;
+        const errorHtml = result?.isDriverError 
+          ? `<div class="history-status-error">${t('devices.failed')}</div>
+             <div class="muted" style="color: #f59e0b; font-weight: 500;">⚠️ ${escapeHtml(result?.error || t('devices.failed'))}</div>
+             <div class="muted" style="margin-top: 4px; font-size: 0.85em;">
+               <a href="#" class="driver-help-link" style="color: #3b82f6; text-decoration: underline;">查看解决方案</a>
+             </div>`
+          : `<div class="history-status-error">${t('devices.failed')}</div>
+             <div class="muted">${escapeHtml(result?.error || t('devices.failed'))}</div>`;
+        statusCell.innerHTML = errorHtml;
+        
+        // 如果是驱动错误，添加帮助链接点击事件
+        if (result?.isDriverError && result?.driverHelp) {
+          const helpLink = statusCell.querySelector('.driver-help-link');
+          if (helpLink) {
+            helpLink.addEventListener('click', (e) => {
+              e.preventDefault();
+              alert(`${result.driverHelp.title}\n\n${result.driverHelp.message}`);
+            });
+          }
+        }
       }
       setTimeout(() => {
         testButton.disabled = false;
@@ -733,7 +749,16 @@ function renderHotplugEvents() {
         autoTestHtml = `<div class="hotplug-meta">${t('hotplug.testing')}</div>`;
       } else {
         const cls = entry.autoTest.status === 'success' ? 'history-status-success' : 'history-status-error';
-        const label = entry.autoTest.status === 'success' ? t('hotplug.testSuccess') : `${t('hotplug.testFailed')}：${escapeHtml(entry.autoTest.message || '')}`;
+        const errorMessage = entry.autoTest.message || '';
+        let label = entry.autoTest.status === 'success' 
+          ? t('hotplug.testSuccess') 
+          : `${t('hotplug.testFailed')}：${escapeHtml(errorMessage)}`;
+        
+        // 如果是驱动错误，添加帮助链接
+        if (entry.autoTest.status === 'error' && entry.autoTest.isDriverError) {
+          label += ` <a href="#" class="hotplug-driver-help-link" style="color: #3b82f6; text-decoration: underline; margin-left: 4px;">[查看解决方案]</a>`;
+        }
+        
         autoTestHtml = `<div class="hotplug-meta"><span class="${cls}">${label}</span></div>`;
       }
     }
@@ -760,6 +785,24 @@ function renderHotplugEvents() {
     `;
   });
   hotplugEventsContainer.innerHTML = items.join('');
+  
+  // 为驱动错误帮助链接添加点击事件
+  hotplugEventsContainer.querySelectorAll('.hotplug-driver-help-link').forEach((link, index) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      // 根据索引找到对应的事件（因为 items 是按 hotplugEvents.slice(0, 5) 生成的）
+      const entry = hotplugEvents[index];
+      if (entry && entry.autoTest?.isDriverError && entry.autoTest?.driverHelp) {
+        alert(`${entry.autoTest.driverHelp.title}\n\n${entry.autoTest.driverHelp.message}`);
+      } else if (entry && entry.device) {
+        // 如果没有 driverHelp，但检测到是驱动错误，生成帮助信息
+        const vid = Number(entry.device.vendorId || 0).toString(16);
+        const pid = Number(entry.device.productId || 0).toString(16);
+        const helpMessage = t('print.windowsDriverHelpMessage', { vid, pid });
+        alert(`${t('print.windowsDriverHelpTitle')}\n\n${helpMessage}`);
+      }
+    });
+  });
 }
 
 function renderPrintHistory() {
@@ -864,12 +907,30 @@ async function autoTestNewDevice(entry, device) {
     });
     entry.autoTest = {
       status: result?.ok ? 'success' : 'error',
-      message: result?.ok ? t('print.testSuccess') : result?.error || t('print.testFailed')
+      message: result?.ok ? t('print.testSuccess') : result?.error || t('print.testFailed'),
+      isDriverError: result?.isDriverError || false,
+      driverHelp: result?.driverHelp || null
     };
   } catch (error) {
+    const errorMessage = error?.message || t('print.testFailed');
+    const isDriverError = error?.isDriverError || error?.code === 'LIBUSB_ERROR_NOT_SUPPORTED' ||
+                          (typeof errorMessage === 'string' && (
+                            errorMessage.includes('LIBUSB_ERROR_NOT_SUPPORTED') ||
+                            errorMessage.includes('not supported') ||
+                            errorMessage.includes('NOT_SUPPORTED') ||
+                            errorMessage.includes('Windows USB 驱动不支持')
+                          ));
     entry.autoTest = {
       status: 'error',
-      message: error?.message || t('print.testFailed')
+      message: errorMessage,
+      isDriverError,
+      driverHelp: isDriverError ? {
+        title: t('print.windowsDriverHelpTitle'),
+        message: t('print.windowsDriverHelpMessage', {
+          vid: vendorId?.toString(16) || 'xxxx',
+          pid: productId?.toString(16) || 'xxxx'
+        })
+      } : null
     };
   }
   renderHotplugEvents();

@@ -6,6 +6,7 @@ const axios = require('axios')
 const fs = require('fs-extra')
 const cors = require('cors')
 const iconv = require('iconv-lite')
+const session = require('express-session')
 
 const app = express()
 
@@ -56,10 +57,45 @@ const LOCAL_AGENT_SOURCE = loadLocalAgentSource()
   .replace(/`/g, '\\`')
   .replace(/\$\{/g, '\\${')
 
+// Trust proxy (for Nginx reverse proxy)
+// This allows Express to trust the X-Forwarded-Proto header from Nginx
+app.set('trust proxy', 1)
+
+// Session configuration
+// When trust proxy is enabled, req.secure will be true when X-Forwarded-Proto is 'https'
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'print-agent-admin-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: true, // Always use secure cookies (HTTPS required)
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax' // CSRF protection
+  }
+}))
+
 // Middleware
-app.use(cors())
+app.use(cors({
+  origin: true,
+  credentials: true
+}))
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: false }))
+
+// Authentication middleware
+function requireAuth(req, res, next) {
+  if (req.session && req.session.authenticated) {
+    return next()
+  }
+  res.status(401).json({ success: false, error: '未登录' })
+}
+
+// Login credentials
+const ADMIN_USERNAME = 'admin'
+const ADMIN_PASSWORD = 'Kevin0416'
+
+// Public routes (login page and static assets)
 app.use(express.static(path.join(__dirname, 'public')))
 app.use(
   '/updates',
@@ -583,9 +619,47 @@ ${isMac ? 'echo "💡 可选：配置 launchctl 让代理随 macOS 启动。"\n'
 }
 
 /**
+ * POST /api/login
+ */
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body
+
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    req.session.authenticated = true
+    req.session.username = username
+    res.json({ success: true, message: '登录成功' })
+  } else {
+    res.status(401).json({ success: false, error: '用户名或密码错误' })
+  }
+})
+
+/**
+ * POST /api/logout
+ */
+app.post('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ success: false, error: '登出失败' })
+    }
+    res.json({ success: true, message: '已登出' })
+  })
+})
+
+/**
+ * GET /api/auth/check
+ */
+app.get('/api/auth/check', (req, res) => {
+  if (req.session && req.session.authenticated) {
+    res.json({ success: true, authenticated: true, username: req.session.username })
+  } else {
+    res.json({ success: true, authenticated: false })
+  }
+})
+
+/**
  * GET /api/shops
  */
-app.get('/api/shops', async (req, res) => {
+app.get('/api/shops', requireAuth, async (req, res) => {
   try {
     const [{ shops }, agents] = await Promise.all([loadData(), fetchAgents()])
     const connectedSet = new Set(agents.filter((agent) => agent.connected).map((agent) => agent.shopId))
@@ -618,7 +692,7 @@ app.get('/api/shops', async (req, res) => {
 /**
  * GET /api/agents (proxy upstream status)
  */
-app.get('/api/agents', async (req, res) => {
+app.get('/api/agents', requireAuth, async (req, res) => {
   try {
     const { data } = await axios.get(`${PRINT_SERVER_URL}/api/print/agents`, {
       timeout: 5000
@@ -639,6 +713,7 @@ app.get('/api/agents', async (req, res) => {
   }
 })
 
+// Agent heartbeat endpoint - no authentication required (print agents need to send heartbeats)
 app.post('/api/agent-heartbeat', async (req, res) => {
   try {
     const rawShopId = req.body?.shopId
@@ -671,7 +746,7 @@ app.post('/api/agent-heartbeat', async (req, res) => {
   }
 })
 
-app.get('/api/agent-heartbeat', async (req, res) => {
+app.get('/api/agent-heartbeat', requireAuth, async (req, res) => {
   try {
     const data = await loadHeartbeatData()
     const now = Date.now()
@@ -709,7 +784,7 @@ app.get('/api/agent-heartbeat', async (req, res) => {
   }
 })
 
-app.get('/api/agent-heartbeat/:shopId', async (req, res) => {
+app.get('/api/agent-heartbeat/:shopId', requireAuth, async (req, res) => {
   try {
     const shopId = String(req.params.shopId || '').trim()
     if (!shopId) {
@@ -727,7 +802,7 @@ app.get('/api/agent-heartbeat/:shopId', async (req, res) => {
   }
 })
 
-app.post('/api/agent-heartbeat/:shopId/test-default', async (req, res) => {
+app.post('/api/agent-heartbeat/:shopId/test-default', requireAuth, async (req, res) => {
   try {
     const shopId = String(req.params.shopId || '').trim()
     if (!shopId) {
@@ -800,7 +875,7 @@ app.post('/api/agent-heartbeat/:shopId/test-default', async (req, res) => {
 /**
  * POST /api/shops
  */
-app.post('/api/shops', async (req, res) => {
+app.post('/api/shops', requireAuth, async (req, res) => {
   const shopId = String(req.body?.shopId || '').trim()
   if (!shopId) {
     return res.status(400).json({ success: false, error: 'shopId 不能为空' })
@@ -840,7 +915,7 @@ app.post('/api/shops', async (req, res) => {
 /**
  * PUT /api/shops/:shopId
  */
-app.put('/api/shops/:shopId', async (req, res) => {
+app.put('/api/shops/:shopId', requireAuth, async (req, res) => {
   const targetId = String(req.params.shopId || '').trim()
   if (!targetId) {
     return res.status(400).json({ success: false, error: 'shopId 无效' })
@@ -893,7 +968,7 @@ app.put('/api/shops/:shopId', async (req, res) => {
 /**
  * DELETE /api/shops/:shopId
  */
-app.delete('/api/shops/:shopId', async (req, res) => {
+app.delete('/api/shops/:shopId', requireAuth, async (req, res) => {
   const targetId = String(req.params.shopId || '').trim()
   if (!targetId) {
     return res.status(400).json({ success: false, error: 'shopId 无效' })
@@ -916,7 +991,7 @@ app.delete('/api/shops/:shopId', async (req, res) => {
 /**
  * POST /api/shops/:shopId/printers
  */
-app.post('/api/shops/:shopId/printers', async (req, res) => {
+app.post('/api/shops/:shopId/printers', requireAuth, async (req, res) => {
   const targetId = String(req.params.shopId || '').trim()
   if (!targetId) {
     return res.status(400).json({ success: false, error: 'shopId 无效' })
@@ -956,7 +1031,7 @@ app.post('/api/shops/:shopId/printers', async (req, res) => {
 /**
  * DELETE /api/shops/:shopId/printers/:ip
  */
-app.delete('/api/shops/:shopId/printers/:ip', async (req, res) => {
+app.delete('/api/shops/:shopId/printers/:ip', requireAuth, async (req, res) => {
   const targetId = String(req.params.shopId || '').trim()
   const printerIp = String(req.params.ip || '').trim()
 
@@ -991,7 +1066,7 @@ app.delete('/api/shops/:shopId/printers/:ip', async (req, res) => {
 /**
  * POST /api/shops/:shopId/printers/:ip/test
  */
-app.post('/api/shops/:shopId/printers/:ip/test', async (req, res) => {
+app.post('/api/shops/:shopId/printers/:ip/test', requireAuth, async (req, res) => {
   const targetId = String(req.params.shopId || '').trim()
   const printerIp = String(req.params.ip || '').trim()
   const port = Number(req.body?.port || 9100)
@@ -1039,7 +1114,7 @@ app.post('/api/shops/:shopId/printers/:ip/test', async (req, res) => {
  * GET /api/shops/:shopId/deploy
  * Returns a curl command for auto deployment script
  */
-app.get('/api/shops/:shopId/deploy', async (req, res) => {
+app.get('/api/shops/:shopId/deploy', requireAuth, async (req, res) => {
   const targetId = String(req.params.shopId || '').trim()
   if (!targetId) {
     return res.status(400).json({ success: false, error: 'shopId 无效' })
@@ -1078,7 +1153,7 @@ app.get('/api/shops/:shopId/deploy', async (req, res) => {
  * GET /api/deploy-script
  * Returns a shell script customised for the given shop
  */
-app.get('/api/deploy-script', async (req, res) => {
+app.get('/api/deploy-script', requireAuth, async (req, res) => {
   const shopId = String(req.query.shopId || '').trim()
   if (!shopId) {
     return res.status(400).send('# 错误：缺少 shopId 参数\nexit 1\n')
@@ -1134,7 +1209,7 @@ function extractVersion(file, patterns) {
 /**
  * Get latest client download links
  */
-app.get('/api/client-downloads', async (req, res) => {
+app.get('/api/client-downloads', requireAuth, async (req, res) => {
   try {
     const updatesPath = path.join(UPDATES_DIR, 'local-usb-agent')
     const downloads = {
@@ -1350,7 +1425,7 @@ app.get('/api/shops/company-map', async (req, res) => {
 /**
  * GET /api/notes
  */
-app.get('/api/notes', async (req, res) => {
+app.get('/api/notes', requireAuth, async (req, res) => {
   try {
     const data = await loadNotes()
     res.json({
@@ -1367,7 +1442,7 @@ app.get('/api/notes', async (req, res) => {
 /**
  * POST /api/notes
  */
-app.post('/api/notes', async (req, res) => {
+app.post('/api/notes', requireAuth, async (req, res) => {
   const title = String(req.body?.title || '').trim()
   const content = String(req.body?.content || '').trim()
 
@@ -1399,7 +1474,7 @@ app.post('/api/notes', async (req, res) => {
 /**
  * PUT /api/notes/:id
  */
-app.put('/api/notes/:id', async (req, res) => {
+app.put('/api/notes/:id', requireAuth, async (req, res) => {
   const noteId = String(req.params.id || '').trim()
   if (!noteId) {
     return res.status(400).json({ success: false, error: '笔记ID无效' })
@@ -1441,7 +1516,7 @@ app.put('/api/notes/:id', async (req, res) => {
 /**
  * DELETE /api/notes/:id
  */
-app.delete('/api/notes/:id', async (req, res) => {
+app.delete('/api/notes/:id', requireAuth, async (req, res) => {
   const noteId = String(req.params.id || '').trim()
   if (!noteId) {
     return res.status(400).json({ success: false, error: '笔记ID无效' })

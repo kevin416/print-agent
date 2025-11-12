@@ -29,11 +29,39 @@ npm start
 
 ### 3. 部署到生产环境
 
+#### 快速更新（仅更新管理后台代码）
+
+适用于仅修改了管理后台代码，不需要更新客户端安装包的情况：
+
+\`\`\`bash
+./deploy-admin.sh --skip-client
+\`\`\`
+
+或者直接运行（默认选择"仅更新管理后台"）：
+
 \`\`\`bash
 ./deploy-admin.sh
 \`\`\`
 
-脚本会自动上传文件、安装依赖并重启 PM2，随后按照提示完成 Nginx / SSL 配置（详见 `DEPLOYMENT.md`）。
+#### 完整部署（包含客户端安装包）
+
+如果需要上传客户端安装包，可以使用：
+
+\`\`\`bash
+./deploy-admin.sh --with-client
+\`\`\`
+
+#### 打包并部署客户端
+
+如果需要打包客户端应用并上传，在项目根目录运行：
+
+\`\`\`bash
+./deploy-client.sh
+\`\`\`
+
+这会自动完成：打包客户端 → 整理构建产物 → 上传到服务器 → 更新管理后台
+
+> 脚本会自动上传文件、安装依赖并重启 PM2，随后按照提示完成 Nginx / SSL 配置（详见 `DEPLOYMENT.md`）。
 
 ## 使用说明
 
@@ -93,7 +121,7 @@ npm start
 - \`POST /api/shops/:shopId/printers/:ip/test\` - 发送测试打印
 - \`GET /api/shops/:shopId/deploy\` - 返回部署脚本 curl 命令
 - \`GET /api/deploy-script?shopId=...\` - 输出针对分店的部署脚本
-- \`GET /api/shops/company-map\` - 导出 \`companyId → shopId\` 映射
+- \`GET /api/shops/company-map\` - 导出 \`companyId → shopId\` 映射（公开接口，无需登录）
 - \`GET /api/agents\` - 获取已连接的本地代理列表
 
 ## 数据存储

@@ -1,12 +1,24 @@
 #!/bin/bash
 
 # 管理后台部署脚本
+# 用法：
+#   ./deploy-admin.sh              # 交互式询问是否上传客户端安装包
+#   ./deploy-admin.sh --with-client # 强制上传客户端安装包
+#   ./deploy-admin.sh --skip-client # 跳过客户端安装包上传（仅更新重启）
 
 set -e
 
 SERVER_USER="kevin"
 SERVER_HOST="90.195.120.165"
 SERVER_PATH="~/print-agent/admin"
+
+# 解析命令行参数
+UPLOAD_CLIENT=""
+if [[ "$1" == "--with-client" ]] || [[ "$1" == "--client" ]]; then
+    UPLOAD_CLIENT="yes"
+elif [[ "$1" == "--skip-client" ]] || [[ "$1" == "--no-client" ]]; then
+    UPLOAD_CLIENT="no"
+fi
 
 echo ""
 echo "════════════════════════════════════════════════════════════"
@@ -54,89 +66,113 @@ scp $SSH_OPTS ecosystem.config.js $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp $SSH_OPTS nginx.conf $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 scp $SSH_OPTS -r public $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
 
-# 同步客户端安装包
-echo "📦 同步客户端安装包..."
-if [ ! -d "$UPDATES_DIR" ]; then
-    echo "⚠️  警告：未找到 updates 目录: $UPDATES_DIR"
-    echo "   跳过客户端安装包上传"
-else
-    echo "   源目录: $UPDATES_DIR"
-    echo "   目标: $SERVER_USER@$SERVER_HOST:~/print-agent/updates/"
+# 决定是否上传客户端安装包
+if [ -z "$UPLOAD_CLIENT" ]; then
+    # 如果没有指定参数，询问用户
+    echo ""
+    echo "是否上传客户端安装包？"
+    echo "  1) 是 - 上传客户端安装包（完整部署）"
+    echo "  2) 否 - 仅更新管理后台并重启（快速更新）"
+    echo ""
+    read -p "请选择 (1-2) [默认: 2]: " CLIENT_CHOICE
+    CLIENT_CHOICE=${CLIENT_CHOICE:-2}
     
-    # 检查是否有 rsync 命令
-    if command -v rsync >/dev/null 2>&1; then
-        echo "   使用 rsync 同步..."
-        rsync $SSH_OPTS -av --delete "$UPDATES_DIR/" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
-        echo "✅ 客户端安装包同步完成"
+    if [ "$CLIENT_CHOICE" == "1" ]; then
+        UPLOAD_CLIENT="yes"
     else
-        echo "   ⚠️  rsync 未找到，使用 scp 上传..."
-        echo "   提示：安装 rsync 可以获得更好的性能（可选）"
-        
-        # 使用 scp 递归上传
-        # 先创建远程目录结构
-        echo "   创建远程目录..."
-        ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "mkdir -p ~/print-agent/updates/local-usb-agent/mac ~/print-agent/updates/local-usb-agent/win ~/print-agent/updates/local-usb-agent/linux ~/print-agent/updates/local-usb-agent/stable" || {
-            echo "   ❌ 创建远程目录失败"
-            exit 1
-        }
-        
-        # 上传文件（逐个上传，避免通配符问题）
-        if [ -d "$UPDATES_DIR/local-usb-agent" ]; then
-            echo "   上传 Windows 文件..."
-            if [ -d "$UPDATES_DIR/local-usb-agent/win" ]; then
-                for file in "$UPDATES_DIR/local-usb-agent/win"/*; do
-                    if [ -f "$file" ]; then
-                        filename=$(basename "$file")
-                        echo "      → $filename"
-                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/win/ || {
-                            echo "      ❌ 上传失败: $filename"
-                        }
-                    fi
-                done
-            fi
-            
-            echo "   上传 macOS 文件..."
-            if [ -d "$UPDATES_DIR/local-usb-agent/mac" ]; then
-                for file in "$UPDATES_DIR/local-usb-agent/mac"/*; do
-                    if [ -f "$file" ]; then
-                        filename=$(basename "$file")
-                        echo "      → $filename"
-                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/mac/ || {
-                            echo "      ❌ 上传失败: $filename"
-                        }
-                    fi
-                done
-            fi
-            
-            echo "   上传 Linux 文件..."
-            if [ -d "$UPDATES_DIR/local-usb-agent/linux" ]; then
-                for file in "$UPDATES_DIR/local-usb-agent/linux"/*; do
-                    if [ -f "$file" ]; then
-                        filename=$(basename "$file")
-                        echo "      → $filename"
-                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/linux/ || {
-                            echo "      ❌ 上传失败: $filename"
-                        }
-                    fi
-                done
-            fi
-            
-            echo "   上传稳定通道 YAML 文件..."
-            if [ -d "$UPDATES_DIR/local-usb-agent/stable" ]; then
-                for file in "$UPDATES_DIR/local-usb-agent/stable"/*; do
-                    if [ -f "$file" ]; then
-                        filename=$(basename "$file")
-                        echo "      → $filename"
-                        scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/stable/ || {
-                            echo "      ❌ 上传失败: $filename"
-                        }
-                    fi
-                done
-            fi
-        fi
-        
-        echo "✅ 客户端安装包上传完成"
+        UPLOAD_CLIENT="no"
     fi
+fi
+
+# 同步客户端安装包
+if [ "$UPLOAD_CLIENT" == "yes" ]; then
+    echo ""
+    echo "📦 同步客户端安装包..."
+    if [ ! -d "$UPDATES_DIR" ]; then
+        echo "⚠️  警告：未找到 updates 目录: $UPDATES_DIR"
+        echo "   跳过客户端安装包上传"
+    else
+        echo "   源目录: $UPDATES_DIR"
+        echo "   目标: $SERVER_USER@$SERVER_HOST:~/print-agent/updates/"
+        
+        # 检查是否有 rsync 命令
+        if command -v rsync >/dev/null 2>&1; then
+            echo "   使用 rsync 同步..."
+            rsync $SSH_OPTS -av --delete "$UPDATES_DIR/" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/
+            echo "✅ 客户端安装包同步完成"
+        else
+            echo "   ⚠️  rsync 未找到，使用 scp 上传..."
+            echo "   提示：安装 rsync 可以获得更好的性能（可选）"
+            
+            # 使用 scp 递归上传
+            # 先创建远程目录结构
+            echo "   创建远程目录..."
+            ssh $SSH_OPTS $SERVER_USER@$SERVER_HOST "mkdir -p ~/print-agent/updates/local-usb-agent/mac ~/print-agent/updates/local-usb-agent/win ~/print-agent/updates/local-usb-agent/linux ~/print-agent/updates/local-usb-agent/stable" || {
+                echo "   ❌ 创建远程目录失败"
+                exit 1
+            }
+            
+            # 上传文件（逐个上传，避免通配符问题）
+            if [ -d "$UPDATES_DIR/local-usb-agent" ]; then
+                echo "   上传 Windows 文件..."
+                if [ -d "$UPDATES_DIR/local-usb-agent/win" ]; then
+                    for file in "$UPDATES_DIR/local-usb-agent/win"/*; do
+                        if [ -f "$file" ]; then
+                            filename=$(basename "$file")
+                            echo "      → $filename"
+                            scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/win/ || {
+                                echo "      ❌ 上传失败: $filename"
+                            }
+                        fi
+                    done
+                fi
+                
+                echo "   上传 macOS 文件..."
+                if [ -d "$UPDATES_DIR/local-usb-agent/mac" ]; then
+                    for file in "$UPDATES_DIR/local-usb-agent/mac"/*; do
+                        if [ -f "$file" ]; then
+                            filename=$(basename "$file")
+                            echo "      → $filename"
+                            scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/mac/ || {
+                                echo "      ❌ 上传失败: $filename"
+                            }
+                        fi
+                    done
+                fi
+                
+                echo "   上传 Linux 文件..."
+                if [ -d "$UPDATES_DIR/local-usb-agent/linux" ]; then
+                    for file in "$UPDATES_DIR/local-usb-agent/linux"/*; do
+                        if [ -f "$file" ]; then
+                            filename=$(basename "$file")
+                            echo "      → $filename"
+                            scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/linux/ || {
+                                echo "      ❌ 上传失败: $filename"
+                            }
+                        fi
+                    done
+                fi
+                
+                echo "   上传稳定通道 YAML 文件..."
+                if [ -d "$UPDATES_DIR/local-usb-agent/stable" ]; then
+                    for file in "$UPDATES_DIR/local-usb-agent/stable"/*; do
+                        if [ -f "$file" ]; then
+                            filename=$(basename "$file")
+                            echo "      → $filename"
+                            scp $SSH_OPTS "$file" $SERVER_USER@$SERVER_HOST:~/print-agent/updates/local-usb-agent/stable/ || {
+                                echo "      ❌ 上传失败: $filename"
+                            }
+                        fi
+                    done
+                fi
+            fi
+            
+            echo "✅ 客户端安装包上传完成"
+        fi
+    fi
+else
+    echo ""
+    echo "⏭️  跳过客户端安装包上传（仅更新管理后台）"
 fi
 
 # 部署

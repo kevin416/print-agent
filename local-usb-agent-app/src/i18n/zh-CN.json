@@ -314,7 +314,10 @@
     "closeUsbDeviceFailed": "关闭 USB 设备失败",
     "releaseInterfaceFailed": "释放接口失败",
     "closeDeviceFailed": "关闭设备失败",
-    "cannotDetachKernelDriver": "无法卸载内核驱动"
+    "cannotDetachKernelDriver": "无法卸载内核驱动",
+    "windowsDriverNotSupported": "Windows USB 驱动不支持 (VID_{vid} & PID_{pid})。该打印机仍由系统内置驱动 (usbprint.sys) 托管。请使用 Zadig 工具将驱动切换为 WinUSB/libusbK。详细步骤请查看 README.md 中的 Windows USB 驱动提示章节。",
+    "windowsDriverHelpTitle": "Windows USB 驱动问题",
+    "windowsDriverHelpMessage": "检测到 LIBUSB_ERROR_NOT_SUPPORTED 错误。该打印机需要使用 WinUSB/libusbK 驱动才能正常工作。\n\n解决步骤：\n1. 下载 Zadig 工具：https://zadig.akeo.ie/\n2. 以管理员身份运行 Zadig\n3. 菜单 Options 勾选 List All Devices\n4. 选择设备 VID_{vid} & PID_{pid}\n5. 右侧选择 WinUSB (v6.x) 或 libusbK\n6. 点击 Replace Driver\n7. 重新插拔打印机并重试\n\n注意：切换驱动后，该打印机将不再走 Windows 默认打印队列。"
   },
   "server": {
     "missingPrintContent": "缺少打印内容",
