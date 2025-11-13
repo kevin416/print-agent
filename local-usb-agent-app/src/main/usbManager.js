@@ -331,7 +331,31 @@ function openDevice(device) {
   
   // 在 Windows 上，WinUSB 设备不需要 detach kernel driver
   // 但某些情况下可能需要
-  if (iface.isKernelDriverActive && iface.isKernelDriverActive()) {
+  let kernelDriverActive = false;
+  if (iface.isKernelDriverActive) {
+    try {
+      kernelDriverActive = iface.isKernelDriverActive();
+    } catch (err) {
+      // Windows WinUSB/libusbK 不支持该调用，返回 NOT_SUPPORTED，忽略即可
+      const errorMessage = err?.message || String(err);
+      const errorCode = err?.errno || err?.code || 'UNKNOWN';
+      if (
+        errorMessage.includes('LIBUSB_ERROR_NOT_SUPPORTED') ||
+        errorMessage.includes('not supported') ||
+        errorMessage.includes('NOT_SUPPORTED') ||
+        errorCode === 'LIBUSB_ERROR_NOT_SUPPORTED'
+      ) {
+        // 2025-11-13: 某些热敏机在 WinUSB/libusbK 下会抛出 NOT_SUPPORTED，
+        // 旧逻辑把这个错误误判成“驱动未切换”，导致打印路径被短路。
+        // 这里显式忽略该异常，仅在真正能判断时才做 kernelDriverActive。
+        logger.debug('Kernel driver active check not supported', { vid, pid });
+      } else {
+        logger.warn('Kernel driver active check failed', { vid, pid, error: errorMessage, code: errorCode });
+      }
+    }
+  }
+
+  if (kernelDriverActive) {
     try {
       logger.debug('Attempting to detach kernel driver', { vid, pid });
       iface.detachKernelDriver();
