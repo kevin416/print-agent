@@ -1,5 +1,6 @@
 const WebSocket = require('ws');
 const os = require('os');
+const iconv = require('iconv-lite');
 const HEARTBEAT_INTERVAL = 30_000;
 
 function resolveWsUrl(store) {
@@ -182,7 +183,7 @@ module.exports = function createWsClient(options) {
 
   async function handleTaskPrint(message) {
     const { id, payload } = message;
-    const { printer, data, encoding, connectionType: payloadConnectionType } = payload || {};
+    const { printer, data, encoding, connectionType: payloadConnectionType, charset } = payload || {};
     if (!printer || data == null) {
       return sendMessage({
         type: 'task_result',
@@ -197,7 +198,18 @@ module.exports = function createWsClient(options) {
       (typeof printer.vendorId === 'number' ? 'usb' : 'tcp');
 
     try {
-      const buffer = encoding === 'base64' ? Buffer.from(data, 'base64') : Buffer.from(data);
+      let buffer = encoding === 'base64' ? Buffer.from(data, 'base64') : Buffer.from(data);
+      
+      // 🔥 修复：如果指定了 charset 为 'utf8'，需要将 UTF-8 转换为 GBK
+      if (charset === 'utf8' || charset === 'utf-8') {
+        // 解析 ESC/POS 数据流，只转换文本部分
+        buffer = convertEscPosUtf8ToGbk(buffer);
+        logger.info('Converted UTF-8 to GBK for print task', { 
+          originalSize: buffer.length,
+          charset: charset,
+          connectionType: connectionType
+        });
+      }
       if (connectionType === 'tcp') {
         const host = printer.ip || printer.host;
         if (!host) {
@@ -317,6 +329,240 @@ module.exports = function createWsClient(options) {
       logger.error('WS config update failed', error);
       sendMessage({ type: 'task_result', id, payload: { status: 'error', message: error?.message || t('websocket.configFailed') } });
     }
+  }
+
+  /**
+   * 将 ESC/POS 数据流从 UTF-8 转换为 GBK
+   * 
+   * 策略：使用状态机解析 ESC/POS 数据流
+   * 1. 识别 ESC/POS 命令（ESC 0x1B, GS 0x1D, 1C 0x1C）
+   * 2. 保留命令字节不变，但移除 0x1C 0x43 0x01 (GBK编码设置命令)，因为数据已经是 GBK
+   * 3. 提取文本部分，从 UTF-8 转换为 GBK
+   * 
+   * 注意：文本中可能包含控制字符（如换行 0x0A），这些应该保留
+   */
+  function convertEscPosUtf8ToGbk(buffer) {
+    const result = [];
+    let textBuffer = [];
+    let i = 0;
+    
+    while (i < buffer.length) {
+      const byte = buffer[i];
+      
+      // 检测 ESC/POS 命令开始
+      if (byte === 0x1B || byte === 0x1D || byte === 0x1C) {
+        // 先处理积累的文本
+        if (textBuffer.length > 0) {
+          convertTextBuffer(textBuffer, result);
+          textBuffer = [];
+        }
+        
+        // 检查是否是 0x1C 0x43 0x01 (GBK编码设置命令)
+        // 如果是，跳过这个命令（因为转换后的数据已经是 GBK，不需要这个命令）
+        if (byte === 0x1C && i + 2 < buffer.length && buffer[i + 1] === 0x43 && buffer[i + 2] === 0x01) {
+          // 跳过 GBK 编码设置命令
+          i += 3;
+          continue;
+        }
+        
+        // 提取并保留其他命令
+        const commandInfo = extractEscPosCommand(buffer, i);
+        result.push(...commandInfo.commandBytes);
+        i = commandInfo.nextIndex;
+        continue;
+      }
+      
+      // 文本数据：添加到文本缓冲区
+      // 包括：ASCII 可打印字符 (0x20-0x7E)、控制字符 (0x0A, 0x0D, 0x09)、UTF-8 多字节字符
+      textBuffer.push(byte);
+      i++;
+    }
+    
+    // 处理剩余的文本
+    if (textBuffer.length > 0) {
+      convertTextBuffer(textBuffer, result);
+    }
+    
+    return Buffer.from(result);
+  }
+  
+  /**
+   * 转换文本缓冲区从 UTF-8 到 GBK
+   */
+  function convertTextBuffer(textBuffer, result) {
+    if (textBuffer.length === 0) return;
+    
+    try {
+      // 将 UTF-8 字节解码为字符串
+      const text = Buffer.from(textBuffer).toString('utf8');
+      // 编码为 GBK
+      const gbkBytes = iconv.encode(text, 'gb18030');
+      result.push(...Array.from(gbkBytes));
+    } catch (err) {
+      // 转换失败，可能是二进制数据或损坏的 UTF-8，直接使用原字节
+      logger.warn('UTF-8 to GBK conversion failed', { 
+        error: err.message, 
+        bufferLength: textBuffer.length,
+        firstBytes: textBuffer.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+      });
+      result.push(...textBuffer);
+    }
+  }
+
+  /**
+   * 提取 ESC/POS 命令
+   * 返回命令字节和下一个索引位置
+   */
+  function extractEscPosCommand(buffer, startIndex) {
+    const commandBytes = [];
+    let i = startIndex;
+    
+    if (i >= buffer.length) {
+      return { commandBytes: [], nextIndex: i };
+    }
+    
+    const firstByte = buffer[i];
+    commandBytes.push(firstByte);
+    i++;
+    
+    if (i >= buffer.length) {
+      return { commandBytes, nextIndex: i };
+    }
+    
+    const secondByte = buffer[i];
+    
+    // ESC 命令 (0x1B)
+    if (firstByte === 0x1B) {
+      commandBytes.push(secondByte);
+      i++;
+      
+      // ESC @ (初始化) - 2字节
+      if (secondByte === 0x40) {
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // ESC a n (对齐) - 3字节
+      if (secondByte === 0x61 && i < buffer.length) {
+        commandBytes.push(buffer[i]);
+        i++;
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // ESC E n (粗体) - 3字节
+      if (secondByte === 0x45 && i < buffer.length) {
+        commandBytes.push(buffer[i]);
+        i++;
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // ESC ! n (字体大小) - 3字节
+      if (secondByte === 0x21 && i < buffer.length) {
+        commandBytes.push(buffer[i]);
+        i++;
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // ESC d n (换行) - 3字节
+      if (secondByte === 0x64 && i < buffer.length) {
+        commandBytes.push(buffer[i]);
+        i++;
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // ESC D n1 n2 ... NUL (制表符) - 可变长度，直到找到 NUL
+      if (secondByte === 0x44) {
+        while (i < buffer.length && buffer[i] !== 0x00) {
+          commandBytes.push(buffer[i]);
+          i++;
+        }
+        if (i < buffer.length) {
+          commandBytes.push(buffer[i]); // NUL
+          i++;
+        }
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // 其他已知的2字节 ESC 命令
+      if (secondByte === 0x32 || secondByte === 0x33 || secondByte === 0x70) {
+        // ESC 2, ESC 3 n, ESC p - 需要根据具体命令处理
+        // 为了安全，先提取2字节
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // 其他 ESC 命令，保守处理：提取2字节
+      return { commandBytes, nextIndex: i };
+    }
+    
+    // GS 命令 (0x1D)
+    if (firstByte === 0x1D) {
+      commandBytes.push(secondByte);
+      i++;
+      
+      // GS ! n (字符大小) - 3字节
+      if (secondByte === 0x21 && i < buffer.length) {
+        commandBytes.push(buffer[i]);
+        i++;
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // GS v 0 m xL xH yL yH d1...dk (位图打印) - 可变长度
+      if (secondByte === 0x76 && i < buffer.length) {
+        commandBytes.push(buffer[i]); // 0
+        i++;
+        if (i < buffer.length) {
+          commandBytes.push(buffer[i]); // m
+          i++;
+          // xL xH yL yH - 4字节
+          for (let j = 0; j < 4 && i < buffer.length; j++) {
+            commandBytes.push(buffer[i]);
+            i++;
+          }
+          // 位图数据长度 = (xL + xH * 256) * (yL + yH * 256) * (m + 1)
+          // 这里我们保守地提取更多字节，但实际数据应该在文本缓冲区中处理
+          // 为了简化，我们只提取命令头，数据部分作为文本处理
+        }
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // GS ( k ... (功能命令) - 可变长度
+      if (secondByte === 0x28 && i < buffer.length) {
+        commandBytes.push(buffer[i]); // k
+        i++;
+        // 根据功能代码提取参数（这里简化处理）
+        let paramCount = 0;
+        while (i < buffer.length && paramCount < 10) {
+          commandBytes.push(buffer[i]);
+          i++;
+          paramCount++;
+          if (buffer[i - 1] === 0x00) {
+            break;
+          }
+        }
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // 其他 GS 命令，保守处理：提取2字节
+      return { commandBytes, nextIndex: i };
+    }
+    
+    // 1C 命令 (0x1C)
+    if (firstByte === 0x1C) {
+      commandBytes.push(secondByte);
+      i++;
+      
+      // 1C 43 n (编码设置) - 3字节
+      if (secondByte === 0x43 && i < buffer.length) {
+        commandBytes.push(buffer[i]);
+        i++;
+        return { commandBytes, nextIndex: i };
+      }
+      
+      // 其他 1C 命令，保守处理：提取2字节
+      return { commandBytes, nextIndex: i };
+    }
+    
+    // 未知命令，保守处理：只提取第一个字节
+    return { commandBytes, nextIndex: i };
   }
 
   function handleTaskPing(message) {

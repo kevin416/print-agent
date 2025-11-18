@@ -92,7 +92,7 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
    * 
    * 策略：使用状态机解析 ESC/POS 数据流
    * 1. 识别 ESC/POS 命令（ESC 0x1B, GS 0x1D, 1C 0x1C）
-   * 2. 保留命令字节不变
+   * 2. 保留命令字节不变，但移除 0x1C 0x43 0x01 (GBK编码设置命令)，因为数据已经是 GBK
    * 3. 提取文本部分，从 UTF-8 转换为 GBK
    * 
    * 注意：文本中可能包含控制字符（如换行 0x0A），这些应该保留
@@ -113,7 +113,15 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
           textBuffer = [];
         }
         
-        // 提取并保留命令
+        // 检查是否是 0x1C 0x43 0x01 (GBK编码设置命令)
+        // 如果是，跳过这个命令（因为转换后的数据已经是 GBK，不需要这个命令）
+        if (byte === 0x1C && i + 2 < buffer.length && buffer[i + 1] === 0x43 && buffer[i + 2] === 0x01) {
+          // 跳过 GBK 编码设置命令
+          i += 3;
+          continue;
+        }
+        
+        // 提取并保留其他命令
         const commandInfo = extractEscPosCommand(buffer, i);
         result.push(...commandInfo.commandBytes);
         i = commandInfo.nextIndex;
