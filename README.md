@@ -46,9 +46,18 @@
 - 支持 USB 和 TCP 网络打印机
 - 自动更新、心跳监控、远程配置
 
-## ⚡ 快速体验
+## ⚡ 快速开始
 
-### 方案一：Yepos Agent（推荐）
+### 🚀 服务器部署（一键部署）
+
+```bash
+cd print-agent
+./deploy.sh
+```
+
+详细部署指南请查看 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) 或 [QUICK_START.md](QUICK_START.md)
+
+### 客户端使用：Yepos Agent（推荐）
 
 1. 从管理后台下载安装包：<https://pa.easyify.uk>
 2. 安装并运行，首次启动会引导配置
@@ -105,19 +114,20 @@ const response = await fetch('https://printer1.easyify.uk/api/print?host=192.168
 ### 服务器部署
 
 ```bash
-# 部署服务器端（SSH）
-./deploy-to-server.sh          # PM2 / Docker 一键部署
+# 快速部署（推荐）
+./deploy.sh                    # 一键部署所有服务
 
-# 配置 Nginx + HTTPS 到 printer-hub.easyify.uk
-./setup-printer-hub-domain.sh printer-hub.easyify.uk ops@easyify.uk
-
-# 管理后台
-cd admin && ./deploy-admin.sh
+# 或分步部署
+./scripts/deploy/deploy-to-server.sh    # 部署打印代理服务器
+cd admin && ./deploy-admin.sh           # 部署管理后台
+cd .. && ./scripts/deploy/setup-printer-hub-domain.sh printer-hub.easyify.uk ops@easyify.uk
 
 # 查看服务器状态
-pm2 list
-curl http://127.0.0.1:3000/api/print/health | jq .
+ssh kevin@2.218.88.144 "pm2 list"
+curl https://printer-hub.easyify.uk/api/print/health | jq .
 ```
+
+详细部署指南请查看 [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
 ### 客户端打包与发布
 
@@ -196,13 +206,19 @@ npx electron-builder --linux
 
 ```
 print-agent/
-├── server/              # 打印服务器（WebSocket 转发）
-├── agent/               # 命令行本地代理（Node.js）
-├── local-usb-agent-app/ # Yepos Agent 桌面应用（Electron）
-├── admin/               # 管理后台（Web 界面）
-├── updates/             # 客户端安装包存储
-├── docs/                # 文档目录
-└── deploy-client.sh     # 客户端打包上传脚本
+├── server/                    # 打印服务器（WebSocket 转发）
+├── agent/                     # 命令行本地代理（Node.js）
+├── local-usb-agent-app/       # Yepos Agent 桌面应用（Electron）
+├── admin/                     # 管理后台（Web 界面）
+├── scripts/                   # 脚本目录
+│   ├── deploy/               # 部署脚本
+│   └── test/                 # 测试脚本
+├── docs/                      # 文档目录
+│   └── deployment-archive/   # 归档文档
+├── updates/                   # 客户端安装包存储
+├── deploy.sh                  # 快速部署脚本（一键部署）
+├── DEPLOYMENT_GUIDE.md        # 部署指南
+└── QUICK_START.md            # 快速开始
 ```
 
 详细结构说明请查看 [docs/project-structure.md](docs/project-structure.md)。
