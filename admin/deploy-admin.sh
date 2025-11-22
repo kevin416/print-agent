@@ -9,7 +9,7 @@
 set -e
 
 SERVER_USER="kevin"
-SERVER_HOST="90.195.120.165"
+SERVER_HOST="2.218.88.144"  # 新 IP，或使用域名 pa.easyify.uk
 SERVER_PATH="~/print-agent/admin"
 
 # 解析命令行参数

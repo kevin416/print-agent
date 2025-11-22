@@ -7,7 +7,7 @@ set -e
 
 # 配置
 SERVER_USER="kevin"
-SERVER_HOST="90.195.120.165"
+SERVER_HOST="2.218.88.144"  # 新 IP，或使用域名 printer-hub.easyify.uk
 SHOP_NAME="${SHOP_NAME:-testclient}"
 PRINTER_HOST="${PRINTER_HOST:-192.168.0.172}"
 PRINTER_PORT="${PRINTER_PORT:-9100}"

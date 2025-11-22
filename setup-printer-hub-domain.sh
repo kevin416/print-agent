@@ -2,7 +2,7 @@
 #
 # setup-printer-hub-domain.sh
 # 将 print-agent 核心服务通过 Nginx 反向代理到指定域名，并申请 Let's Encrypt 证书。
-# 默认目标服务器：kevin@90.195.120.165
+# 默认目标服务器：kevin@2.218.88.144 (或使用域名 printer-hub.easyify.uk)
 #
 # 用法:
 #   ./setup-printer-hub-domain.sh [domain] [email] [--staging]
@@ -31,7 +31,7 @@ fi
 
 # 配置
 SERVER_USER="${SERVER_USER:-kevin}"
-SERVER_HOST="${SERVER_HOST:-90.195.120.165}"
+SERVER_HOST="${SERVER_HOST:-2.218.88.144}"
 REMOTE="${SERVER_USER}@${SERVER_HOST}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-~/print-agent/server}"
 REMOTE_CONFIG_TMP="/tmp/${DOMAIN}.nginx.conf"

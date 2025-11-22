@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SERVER_USER="${SERVER_USER:-kevin}"
-SERVER_HOST="${SERVER_HOST:-90.195.120.165}"
+SERVER_HOST="${SERVER_HOST:-ssh.easyify.uk}"  # 使用域名或 IP 2.218.88.144
 SERVER="${SERVER_USER}@${SERVER_HOST}"
 
 # 颜色输出

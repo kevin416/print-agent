@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 打印代理服务器部署脚本 - 新版本（无VPN）
-# 部署到远程服务器 (kevin@90.195.120.165)
+# 部署到远程服务器
 # 使用 PM2 或 Docker 部署
 # 用法: ./deploy-to-server.sh
 
@@ -9,7 +9,7 @@ set -e
 
 # 配置
 SERVER_USER="kevin"
-SERVER_HOST="90.195.120.165"
+SERVER_HOST="2.218.88.144"  # 新 IP，或使用域名 printer-hub.easyify.uk
 SERVER_PATH="~/print-agent"
 OLD_PROXY_PATH="~/print-proxy-server"
 
