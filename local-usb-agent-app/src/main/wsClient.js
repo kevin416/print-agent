@@ -604,6 +604,8 @@ module.exports = function createWsClient(options) {
     const port = message.port || 9100;
     const encoding = message.encoding || 'base64';
     const payload = message.data;
+    const charset = message.charset; // 🔥 检查 charset 字段
+    
     if (!host || !payload) {
       sendLegacyPrintResult({
         taskId,
@@ -613,12 +615,41 @@ module.exports = function createWsClient(options) {
       return;
     }
     try {
-      const buffer =
+      let buffer =
         encoding === 'base64'
           ? Buffer.from(payload, 'base64')
           : encoding === 'hex'
             ? Buffer.from(payload, 'hex')
             : Buffer.from(payload);
+      
+      // 🔥 调试：检查数据的前几个字节
+      const sampleBytes = buffer.slice(0, Math.min(20, buffer.length))
+      const sampleHex = Array.from(sampleBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+      
+      // 🔥 如果指定了 charset 为 'utf8'，需要将 UTF-8 转换为 GBK
+      // 否则，数据已经是 GBK 编码（从 React Native 发送），直接使用
+      if (charset === 'utf8' || charset === 'utf-8') {
+        logger.info('Legacy print: Converting UTF-8 to GBK', { 
+          taskId,
+          originalSize: buffer.length,
+          charset,
+          sampleHex
+        });
+        // 解析 ESC/POS 数据流，只转换文本部分
+        buffer = convertEscPosUtf8ToGbk(buffer);
+        logger.info('Legacy print: Converted UTF-8 to GBK', { 
+          taskId,
+          convertedSize: buffer.length
+        });
+      } else {
+        logger.info('Legacy print: Data is already GBK, using directly', { 
+          taskId,
+          dataSize: buffer.length,
+          charset: charset || 'none (assumed GBK)',
+          sampleHex
+        });
+      }
+      
       await tcpPrinterManager.print({ ip: host, port, data: buffer, encoding: 'buffer' });
       printHistory.append({
         type: 'print',

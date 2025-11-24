@@ -1,7 +1,7 @@
 {
   "name": "local-usb-agent-app",
   "productName": "Yepos Agent",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Yepos Agent - Local printing agent with USB and TCP support",
   "author": "Kevin Chen",
   "license": "MIT",

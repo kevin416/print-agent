@@ -7,7 +7,9 @@ set -e
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+# 返回到项目根目录（scripts/deploy 的父目录的父目录）
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT"
 
 echo ""
 echo "════════════════════════════════════════════════════════════"
@@ -18,6 +20,7 @@ echo ""
 # 检查是否在正确的目录
 if [ ! -d "local-usb-agent-app" ]; then
     echo "❌ 错误：未找到 local-usb-agent-app 目录"
+    echo "   当前目录: $(pwd)"
     echo "   请确保在 print-agent 项目根目录下运行此脚本"
     exit 1
 fi

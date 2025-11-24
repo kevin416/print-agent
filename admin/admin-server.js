@@ -382,23 +382,64 @@ function formatPrinterLabel(printer) {
 }
 
 function buildTestTicket(shopId, printer, mapping) {
-  const now = new Date().toLocaleString()
+  const now = new Date()
+  const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const printerLabel = formatPrinterLabel(printer)
+  
   const lines = [
     '\x1B@', // initialize
-    '\x1B!\x30',
-    'LOCAL USB AGENT\n',
+    '\x1B!\x30', // Double height, double width
+    'PRINT AGENT TEST\n',
+    '打印代理测试\n',
+    '\x1B!\x00', // Normal size
+    '==============================\n',
+    '\n',
+    '\x1B!\x01', // Bold
+    'Shop / 分店:\n',
     '\x1B!\x00',
-    '远程测试打印\n',
-    '------------------------------\n',
-    `分店: ${shopId}\n`,
-    `打印机: ${printerLabel}\n`,
-    mapping?.alias ? `别名: ${mapping.alias}\n` : '',
-    mapping?.role ? `用途: ${mapping.role}\n` : '',
-    `时间: ${now}\n`,
-    '------------------------------\n',
-    '如成功出纸表示远程联调正常。\n\n',
-    '\x1DVA\x00'
+    `${shopId}\n`,
+    '\n',
+    '\x1B!\x01',
+    'Printer / 打印机:\n',
+    '\x1B!\x00',
+    `${printerLabel}\n`,
+    '\n',
+    mapping?.alias ? `Alias / 别名: ${mapping.alias}\n` : '',
+    mapping?.role ? `Role / 用途: ${mapping.role}\n` : '',
+    '\n',
+    '\x1B!\x01',
+    'Date & Time / 日期时间:\n',
+    '\x1B!\x00',
+    `${dateStr} ${timeStr}\n`,
+    '\n',
+    '==============================\n',
+    '\n',
+    '\x1B!\x01',
+    'Character Test / 字符测试\n',
+    '\x1B!\x00',
+    'English: ABCDEFGHIJKLMNOPQRSTUVWXYZ\n',
+    'English: abcdefghijklmnopqrstuvwxyz\n',
+    'Numbers: 0123456789\n',
+    'Symbols: !@#$%^&*()_+-=[]{}|;:,.<>?\n',
+    'Chinese: 中文测试打印正常\n',
+    'Mixed: Hello 世界 123 !@#\n',
+    '\n',
+    '==============================\n',
+    '\n',
+    '\x1B!\x01',
+    'Status / 状态:\n',
+    '\x1B!\x00',
+    '✅ Print Test Successful\n',
+    '✅ 打印测试成功\n',
+    '\n',
+    'If you see this page correctly,\n',
+    'the printer is working properly.\n',
+    '\n',
+    '如果您看到此页面正确显示，\n',
+    '说明打印机工作正常。\n',
+    '\n',
+    '\x1DVA\x00' // Cut paper
   ]
   return lines.join('')
 }
@@ -847,6 +888,9 @@ app.post('/api/agent-heartbeat/:shopId/test-default', requireAuth, async (req, r
       printerPayload.productId = defaultPrinter.productId
     }
 
+    // buildTestTicket returns UTF-8 string, encode to base64 for transmission
+    // Set charset to 'utf8' so local agent can perform ESC/POS-aware conversion
+    const utf8Buffer = Buffer.from(payload, 'utf8')
     const response = await axios.post(
       `${PRINT_SERVER_URL}/api/agent/tasks`,
       {
@@ -854,9 +898,9 @@ app.post('/api/agent-heartbeat/:shopId/test-default', requireAuth, async (req, r
         type: 'print-test',
         payload: {
           printer: printerPayload,
-          data: iconv.encode(payload, 'gb18030').toString('base64'),
+          data: utf8Buffer.toString('base64'),
           encoding: 'base64',
-          charset: 'GB18030',
+          charset: 'utf8', // UTF-8 data, local agent will convert to GBK with ESC/POS awareness
           reason: 'remote-test'
         }
       },
@@ -1076,17 +1120,65 @@ app.post('/api/shops/:shopId/printers/:ip/test', requireAuth, async (req, res) =
   }
 
   try {
-    // Build a simple ESC/POS test receipt
-    const testContent = Buffer.from(
-      '\x1B@\x1B!\x38PRINT AGENT TEST\n\x1B!\x00\n🖨️ 打印测试成功\n\n\x1B!\x01Shop: ' +
-        targetId +
-        '\nPrinter: ' +
-        printerIp +
-        ':' +
-        port +
-        '\n\n\x1DVA\x00',
-      'binary'
-    )
+    // Build a comprehensive ESC/POS test receipt with English and Chinese
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    
+    // Build UTF-8 string first
+    const testString = 
+      '\x1B@' + // initialize
+      '\x1B!\x30' + // Double height, double width
+      'PRINT AGENT TEST\n' +
+      '打印代理测试\n' +
+      '\x1B!\x00' + // Normal size
+      '==============================\n' +
+      '\n' +
+      '\x1B!\x01' + // Bold
+      'Shop / 分店:\n' +
+      '\x1B!\x00' +
+      targetId + '\n' +
+      '\n' +
+      '\x1B!\x01' +
+      'Printer / 打印机:\n' +
+      '\x1B!\x00' +
+      printerIp + ':' + port + '\n' +
+      '\n' +
+      '\x1B!\x01' +
+      'Date & Time / 日期时间:\n' +
+      '\x1B!\x00' +
+      dateStr + ' ' + timeStr + '\n' +
+      '\n' +
+      '==============================\n' +
+      '\n' +
+      '\x1B!\x01' +
+      'Character Test / 字符测试\n' +
+      '\x1B!\x00' +
+      'English: ABCDEFGHIJKLMNOPQRSTUVWXYZ\n' +
+      'English: abcdefghijklmnopqrstuvwxyz\n' +
+      'Numbers: 0123456789\n' +
+      'Symbols: !@#$%^&*()_+-=[]{}|;:,.<>?\n' +
+      'Chinese: 中文测试打印正常\n' +
+      'Mixed: Hello 世界 123 !@#\n' +
+      '\n' +
+      '==============================\n' +
+      '\n' +
+      '\x1B!\x01' +
+      'Status / 状态:\n' +
+      '\x1B!\x00' +
+      '✅ Print Test Successful\n' +
+      '✅ 打印测试成功\n' +
+      '\n' +
+      'If you see this page correctly,\n' +
+      'the printer is working properly.\n' +
+      '\n' +
+      '如果您看到此页面正确显示，\n' +
+      '说明打印机工作正常。\n' +
+      '\n' +
+      '\x1DVA\x00' // Cut paper
+    
+    // Create UTF-8 Buffer - server will handle ESC/POS-aware conversion
+    const testContent = Buffer.from(testString, 'utf8')
 
     await axios.post(`${PRINT_SERVER_URL}/api/print`, testContent, {
       params: {
@@ -1095,7 +1187,8 @@ app.post('/api/shops/:shopId/printers/:ip/test', requireAuth, async (req, res) =
       },
       headers: {
         'Content-Type': 'application/octet-stream',
-        'X-Shop-Name': targetId
+        'X-Shop-Name': targetId,
+        'X-Charset': 'utf8' // Admin server sends UTF-8, server will convert to GBK with ESC/POS awareness
       },
       timeout: 15000,
       maxContentLength: Infinity,

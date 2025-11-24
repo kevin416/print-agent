@@ -110,6 +110,45 @@ npm start
 
 > 提示：如果没有安装 `jq`，可以改用 `curl -s ... | python -m json.tool` 或直接访问浏览器复制。
 
+## 打印编码原理
+
+### 中文打印编码处理机制
+
+管理后台使用 **UTF-8 → ESC/POS 感知转换 → GBK** 的方式处理中文打印，确保中文字符正确显示且不破坏 ESC/POS 命令。
+
+#### 工作流程
+
+1. **数据生成阶段（admin-server）**
+   - 构建包含中英文和 ESC/POS 命令的 UTF-8 字符串
+   - 转换为 UTF-8 Buffer 准备发送
+
+2. **编码标识**
+   - **TCP 测试路由** (`/api/shops/:shopId/printers/:ip/test`)：通过 `X-Charset: utf8` HTTP 头标识数据为 UTF-8
+   - **远程测试路由** (`/api/agent-heartbeat/:shopId/test-default`)：通过 `charset: 'utf8'` 字段标识数据为 UTF-8
+
+3. **服务器端转换（print-server + local agent）**
+   - print-server 检测到 UTF-8 标识后，转发给 local agent 并标记 `charset: 'utf8'`
+   - local agent 使用 `convertEscPosUtf8ToGbk` 函数进行 **ESC/POS 感知转换**：
+     - 解析并保留所有 ESC/POS 命令字节（如 `\x1B@`, `\x1B!\x30` 等）
+     - 仅转换文本部分：UTF-8 → GBK/GB18030
+     - 确保命令字节不被破坏
+
+4. **最终输出**
+   - 打印机收到正确 GBK 编码的数据，中文字符正常显示
+
+#### 技术优势
+
+- ✅ **不破坏 ESC/POS 命令**：只转换文本内容，所有命令字节保持原样
+- ✅ **统一处理方式**：admin-server 只需发送 UTF-8，转换由服务器端统一处理
+- ✅ **兼容性好**：完美支持混合的中英文内容和 ESC/POS 命令
+
+#### 代码实现位置
+
+- **TCP 测试路由**：`admin-server.js` 第 1128-1191 行
+- **远程测试路由**：`admin-server.js` 第 891-903 行
+
+> 注意：此方法与 `manager_next` 保持一致，确保整个打印系统使用统一的编码处理方式。
+
 ## API 接口
 
 - \`GET /api/shops\` - 获取所有分店（含连接状态）

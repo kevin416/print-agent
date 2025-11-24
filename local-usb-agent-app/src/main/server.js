@@ -57,14 +57,39 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
         // 解码 base64 数据
         const buffer = Buffer.from(data, encoding || 'base64');
         
-        // 如果指定了 charset 为 'utf8'，需要将 UTF-8 转换为 GBK
+        // 🔥 如果指定了 charset 为 'utf8'，需要将 UTF-8 转换为 GBK
         if (charset === 'utf8' || charset === 'utf-8') {
+          // 调试：检查数据的前几个字节
+          const sampleBytes = buffer.slice(0, Math.min(20, buffer.length))
+          const sampleHex = Array.from(sampleBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+          logger.info('Converting UTF-8 to GBK', { 
+            originalSize: buffer.length,
+            sampleHex,
+            connectionType,
+            charset
+          });
+          
           // 解析 ESC/POS 数据流，只转换文本部分
           const convertedBuffer = convertEscPosUtf8ToGbk(buffer);
+          
+          // 调试：检查转换后的数据
+          const convertedSampleBytes = convertedBuffer.slice(0, Math.min(20, convertedBuffer.length))
+          const convertedSampleHex = Array.from(convertedSampleBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+          logger.info('Converted UTF-8 to GBK', { 
+            originalSize: buffer.length, 
+            convertedSize: convertedBuffer.length,
+            originalSampleHex: sampleHex,
+            convertedSampleHex
+          });
+          
           payload = { data: convertedBuffer, encoding: 'buffer' };
-          logger.info('Converted UTF-8 to GBK', { originalSize: buffer.length, convertedSize: convertedBuffer.length });
         } else {
           // 数据已经是 GBK 编码（或已经是正确的编码），直接使用
+          logger.info('Data is already GBK, using directly', { 
+            dataSize: buffer.length,
+            charset: charset || 'none (assumed GBK)',
+            connectionType
+          });
           payload = { data: buffer, encoding: 'buffer' };
         }
       } else {
@@ -144,16 +169,36 @@ async function startServer({ configStore, usbManager, tcpPrinterManager, printer
   
   /**
    * 转换文本缓冲区从 UTF-8 到 GBK
+   * 🔥 重要：控制字符（如 0x0A, 0x0D, 0x09）会保留在文本中，iconv 会正确处理它们
    */
   function convertTextBuffer(textBuffer, result) {
     if (textBuffer.length === 0) return;
     
     try {
       // 将 UTF-8 字节解码为字符串
+      // 注意：控制字符（如换行 0x0A）会保留在字符串中
       const text = Buffer.from(textBuffer).toString('utf8');
+      
+      // 🔥 调试：检查文本内容
+      const hasChinese = /[\u4e00-\u9fa5]/.test(text);
+      if (hasChinese) {
+        logger.info('Converting text with Chinese characters', {
+          textLength: text.length,
+          bufferLength: textBuffer.length,
+          sampleText: text.substring(0, 20)
+        });
+      }
+      
       // 编码为 GBK
       const gbkBytes = iconv.encode(text, 'gb18030');
       result.push(...Array.from(gbkBytes));
+      
+      logger.debug('Text buffer converted', {
+        originalLength: textBuffer.length,
+        textLength: text.length,
+        gbkLength: gbkBytes.length,
+        hasChinese
+      });
     } catch (err) {
       // 转换失败，可能是二进制数据或损坏的 UTF-8，直接使用原字节
       logger.warn('UTF-8 to GBK conversion failed', { 

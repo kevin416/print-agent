@@ -314,8 +314,10 @@ function ack(ws, message) {
 /**
  * 打印接口
  * POST /api/print?host=192.168.0.172&port=9100
- * Headers: X-Shop-Name: shop-name
- * Body: 打印数据（UTF-8 编码）
+ * Headers: 
+ *   - X-Shop-Name: shop-name (必需)
+ *   - X-Charset: utf8 (可选，如果数据是 UTF-8 编码则设置，否则数据已经是 GBK)
+ * Body: 打印数据（二进制）
  */
 app.post('/api/print', async (req, res) => {
   const printerHost = req.query.host
@@ -330,12 +332,24 @@ app.post('/api/print', async (req, res) => {
     const shopConfig = validatePrintRequest(req, printerHost)
     const shopName = shopConfig.name
     
+    // 🔥 检查 X-Charset 头，判断数据编码
+    const charset = req.headers['x-charset'] || req.headers['X-Charset']
+    const isUTF8 = charset === 'utf8' || charset === 'utf-8'
+    
     // 获取打印数据
-    const utf8Data = req.body instanceof Buffer ? req.body : Buffer.from(req.body)
+    const printData = req.body instanceof Buffer ? req.body : Buffer.from(req.body)
+    
+    // 🔥 调试：检查数据的前几个字节，确认是否是 GBK 编码的中文
+    const sampleBytes = printData.slice(0, Math.min(20, printData.length))
+    const sampleHex = Array.from(sampleBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
     
     console.log(`\n📄 收到打印请求: ${printerHost}:${printerPort}`)
     console.log(`   分店: ${shopName}`)
-    console.log(`   数据大小: ${utf8Data.length} 字节 (UTF-8)`)
+    console.log(`   数据大小: ${printData.length} 字节`)
+    console.log(`   数据编码: ${isUTF8 ? 'UTF-8 (需要转换)' : 'GBK (直接使用)'}`)
+    console.log(`   X-Charset: ${charset || 'none (假设是 GBK)'}`)
+    console.log(`   数据样本 (前20字节): ${sampleHex}`)
+    console.log(`   req.body 类型: ${typeof req.body}, 是否为 Buffer: ${Buffer.isBuffer(req.body)}`)
     
     // 通过本地代理发送
     const result = await sendViaLocalAgent(
@@ -343,7 +357,8 @@ app.post('/api/print', async (req, res) => {
       shopName,
       printerHost,
       printerPort,
-      utf8Data
+      printData,
+      isUTF8 // 🔥 传递编码标志
     )
     
     res.json({
@@ -352,7 +367,7 @@ app.post('/api/print', async (req, res) => {
       printer: `${printerHost}:${printerPort}`,
       shop: shopName,
       mode: 'local_agent',
-      encoding: 'GBK (本地代理转换)'
+      encoding: isUTF8 ? 'UTF-8 → GBK (已转换)' : 'GBK (直接使用)'
     })
     
   } catch (error) {
@@ -368,8 +383,14 @@ app.post('/api/print', async (req, res) => {
 
 /**
  * 通过本地代理发送打印任务
+ * @param {WebSocket} agent - 本地代理 WebSocket 连接
+ * @param {string} shopName - 分店名称
+ * @param {string} printerHost - 打印机IP
+ * @param {number} printerPort - 打印机端口
+ * @param {Buffer} printData - 打印数据
+ * @param {boolean} isUTF8 - 数据是否为 UTF-8 编码（需要转换为 GBK）
  */
-function sendViaLocalAgent(agent, shopName, printerHost, printerPort, utf8Data) {
+function sendViaLocalAgent(agent, shopName, printerHost, printerPort, printData, isUTF8 = false) {
   return new Promise((resolve, reject) => {
     const taskId = Date.now().toString() + Math.random().toString(36).substr(2, 9)
     const timeout = setTimeout(() => {
@@ -401,16 +422,41 @@ function sendViaLocalAgent(agent, shopName, printerHost, printerPort, utf8Data) 
     
     agent.on('message', responseHandler)
     
-    // 发送打印任务（数据以 base64 编码传输）
-    agent.send(JSON.stringify({
+    // 🔥 重要：print-agent server 不应该转换数据，因为简单的 convertToGBK 会破坏 ESC/POS 命令
+    // 应该直接转发给 local-usb-agent-app，让 agent 使用 convertEscPosUtf8ToGbk 来正确转换
+    // 
+    // 策略：
+    // 1. 如果数据是 UTF-8，设置 charset: 'utf8'，让 agent 使用 convertEscPosUtf8ToGbk 转换
+    // 2. 如果数据已经是 GBK，不设置 charset，让 agent 直接使用
+    const message = {
       type: 'print',
       taskId: taskId,
       printerIP: printerHost,
       port: printerPort,
-      data: convertToGBK(utf8Data).toString('base64'),
-      encoding: 'base64',
-      charset: 'GB18030'
-    }))
+      data: printData.toString('base64'), // 🔥 直接使用原始数据，不转换
+      encoding: 'base64'
+    }
+    
+    // 🔥 只有数据是 UTF-8 时才设置 charset，告诉 agent 需要转换
+    // 如果数据已经是 GBK，不设置 charset，agent 会直接使用
+    if (isUTF8) {
+      message.charset = 'utf8'
+      console.log(`   🔄 发送给 agent：数据是 UTF-8，设置 charset: utf8，agent 将使用 convertEscPosUtf8ToGbk 转换`)
+    } else {
+      console.log(`   ✅ 发送给 agent：数据已经是 GBK，不设置 charset，agent 直接使用`)
+    }
+    
+    console.log(`   📦 消息详情:`, {
+      type: message.type,
+      taskId: message.taskId,
+      printerIP: message.printerIP,
+      port: message.port,
+      dataLength: message.data.length,
+      charset: message.charset || 'none (assumed GBK)',
+      isUTF8
+    })
+    
+    agent.send(JSON.stringify(message))
     
     console.log(`   🔗 已发送到本地代理: ${taskId}`)
   })
